@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 BASE="/addons/local/claude-assistant"
-echo "=== Claude HA Assistant – Lokale Installation ==="
+echo "=== Claude HA Assistant – Update ==="
 mkdir -p "$BASE/app/templates" "$BASE/app/static"
 
 cat > "$BASE/config.yaml" << 'CLAUDE_EOF_CONFIG_YAML'
@@ -38,11 +38,11 @@ CLAUDE_EOF_CONFIG_YAML
 
 cat > "$BASE/build.yaml" << 'CLAUDE_EOF_BUILD_YAML'
 build_from:
-  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.11-alpine3.18"
-  amd64: "ghcr.io/home-assistant/amd64-base-python:3.11-alpine3.18"
-  armhf: "ghcr.io/home-assistant/armhf-base-python:3.11-alpine3.18"
-  armv7: "ghcr.io/home-assistant/armv7-base-python:3.11-alpine3.18"
-  i386: "ghcr.io/home-assistant/i386-base-python:3.11-alpine3.18"
+  aarch64: "python:3.11-alpine"
+  amd64: "python:3.11-alpine"
+  armhf: "python:3.11-alpine"
+  armv7: "python:3.11-alpine"
+  i386: "python:3.11-alpine"
 
 CLAUDE_EOF_BUILD_YAML
 
@@ -1391,5 +1391,5 @@ CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML
 
 chmod +x "$BASE/run.sh"
 echo ""
-echo "✅ Fertig! Alle Dateien angelegt in $BASE"
-echo "👉 Jetzt in HA: Einstellungen → Add-ons → drei Punkte → Lokale Add-ons neu laden"
+echo "✅ Update fertig!"
+echo "👉 In HA: Add-on Store → drei Punkte → Lokale Add-ons neu laden → Rebuild"

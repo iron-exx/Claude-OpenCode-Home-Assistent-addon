@@ -108,6 +108,11 @@ log = logging.getLogger(__name__)
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    log.error(f"Unbehandelte Exception: {e}", exc_info=True)
+    return jsonify({"error": f"Server-Fehler: {str(e)}"}), 500
+
 # ─── HA API Konfiguration ─────────────────────────────────────────────────────
 HA_TOKEN   = os.environ.get("SUPERVISOR_TOKEN", "")
 HA_API     = "http://supervisor/core/api"
@@ -608,6 +613,7 @@ def index():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.get_json(force=True)
+    log.info(f"Chat-Request: {len(data.get('messages', []))} Nachrichten, model={data.get('model','?')}, api_key={'ja' if (data.get('api_key') or DEFAULT_API_KEY) else 'FEHLT'}")
     messages = data.get("messages", [])
     api_key = data.get("api_key") or DEFAULT_API_KEY
 
@@ -1384,4 +1390,4 @@ CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML
 
 chmod +x "$BASE/run.sh"
 echo "✅ Update fertig!"
-echo "👉 In HA: Add-on Store → Lokale Add-ons neu laden → Rebuild"
+echo "👉 Rebuild in HA nötig!"

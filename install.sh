@@ -22,6 +22,11 @@ ingress_port: 8099
 panel_icon: "mdi:robot"
 panel_title: "Claude AI"
 
+# HA API Zugriff
+homeassistant_api: true
+hassio_api: true
+hassio_role: manager
+
 options:
   anthropic_api_key: ""
   model: "claude-opus-4-5"

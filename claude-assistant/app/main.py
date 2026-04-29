@@ -781,19 +781,8 @@ def chat_with_opencode(messages: list, opencode_url: str) -> dict:
     if history_text:
         full_prompt = f"[Bisheriger Verlauf:]\n{history_text}\n[Aktuelle Anfrage:] {user_text}"
 
-    # Aktuelle HA-Entitäten als Kontext mitgeben
-    try:
-        states = ha_get("/states")
-        entity_summary = ", ".join([
-            f"{s['entity_id']}={s['state']}"
-            for s in states[:60]
-        ])
-        ha_context = f"\n\n[Verfügbare HA-Entitäten (Auswahl)]: {entity_summary}"
-    except Exception:
-        ha_context = ""
-
     payload = {
-        "parts": [{"type": "text", "text": SYSTEM_PROMPT + HA_ACTIONS_PROMPT + ha_context + "\n\n" + full_prompt}],
+        "parts": [{"type": "text", "text": SYSTEM_PROMPT + HA_ACTIONS_PROMPT + "\n\n" + full_prompt}],
         "model": {"providerID": "opencode", "modelID": "big-pickle"}
     }
 
@@ -1085,4 +1074,4 @@ def status():
 # ─── Start ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     log.info("Claude HA Assistant startet auf Port 8099")
-    app.run(host="0.0.0.0", port=8099, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=8099, debug=False, threaded=True, processes=1)

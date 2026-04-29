@@ -467,8 +467,9 @@ async function sendMessage() {
     // Polling
     const jobId = startData.job_id;
     let result=null;
-    for(let i=0;i<300;i++) {
-      await new Promise(r=>setTimeout(r,1000));
+    // Schnelles Polling: erst alle 200ms, dann 500ms nach 10s
+    for(let i=0;i<1500;i++) {
+      await new Promise(r=>setTimeout(r, i < 50 ? 200 : 500));
       try {
         const pd = await (await fetch(BASE+'/api/chat/poll/'+jobId)).json();
         if(pd.status==='done'||pd.status==='error'){result=pd;break;}

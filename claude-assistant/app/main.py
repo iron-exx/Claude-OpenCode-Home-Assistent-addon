@@ -558,29 +558,28 @@ def chat():
         log.info(f"Iteration {iteration+1}: stop_reason={response.stop_reason}, content_blocks={len(response.content)}")
 
         if response.stop_reason == "tool_use":
-            # Assistent-Nachricht mit Tool-Calls merken
-            current_messages.append({
-                "role": "assistant",
-                "content": [block.model_dump() for block in response.content]
-            })
+            # Assistent-Nachricht – safe serialisiert
+            assistant_content = []
+            for block in response.content:
+                try:
+                    assistant_content.append(json.loads(json.dumps(block.model_dump(), default=str)))
+                except Exception:
+                    pass
+            current_messages.append({"role": "assistant", "content": assistant_content})
 
-            # Alle Tool-Calls ausführen
+            # Tool-Calls ausführen
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
                     log.info(f"Tool-Call: {block.name}")
                     result = execute_tool(block.name, block.input)
-                    tool_calls_log.append({"tool": block.name, "input": block.input})
+                    tool_calls_log.append({"tool": block.name})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": result
                     })
-
-            current_messages.append({
-                "role": "user",
-                "content": tool_results
-            })
+            current_messages.append({"role": "user", "content": tool_results})
 
         else:
             # Finale Antwort
@@ -589,13 +588,22 @@ def chat():
                 if hasattr(block, "text"):
                     text += block.text
 
-            return jsonify({
-                "response": text,
-                "messages": current_messages,
-                "tool_calls": tool_calls_log
-            })
+            # History sicher serialisieren für nächste Runde
+            safe_messages = []
+            for msg in current_messages:
+                try:
+                    safe_messages.append(json.loads(json.dumps(msg, default=str)))
+                except Exception:
+                    pass
+            safe_messages.append({"role": "assistant", "content": text})
 
-    return jsonify({"error": "Maximale Iterations-Anzahl erreicht.", "messages": current_messages})
+            try:
+                return jsonify({"response": text, "messages": safe_messages, "tool_calls": tool_calls_log})
+            except Exception as e:
+                log.error(f"Serialisierungsfehler: {e}")
+                return jsonify({"response": text, "messages": [], "tool_calls": []})
+
+    return jsonify({"error": "Maximale Iterations-Anzahl erreicht."})
 
 
 @app.route("/api/status", methods=["GET"])

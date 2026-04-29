@@ -39,7 +39,6 @@ schema:
 
 map:
   - config:rw
-  - homeassistant:rw
 
 
 
@@ -500,7 +499,7 @@ def execute_tool(name: str, inp: dict) -> str:
             if "condition" in inp:
                 automation["condition"] = inp["condition"]
             # In /homeassistant/automations.yaml anhängen
-            automations_file = "/homeassistant/automations.yaml"
+            automations_file = "/config/automations.yaml"
             # Bestehende Automationen lesen
             existing = []
             if os.path.exists(automations_file):

@@ -32,6 +32,5 @@ schema:
 
 map:
   - config:rw
-  - homeassistant:rw
 
 

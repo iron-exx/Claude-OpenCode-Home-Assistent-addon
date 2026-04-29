@@ -50,7 +50,6 @@ cat > "$BASE/Dockerfile" << 'CLAUDE_EOF_DOCKERFILE'
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# jq für Config-Lesen
 RUN apk add --no-cache jq
 
 WORKDIR /app
@@ -60,10 +59,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ /app/
 
-# s6-Service anlegen – HA Base Images nutzen s6-overlay als Init
-RUN mkdir -p /etc/services.d/claude
-COPY run.sh /etc/services.d/claude/run
-RUN chmod a+x /etc/services.d/claude/run
+# s6-overlay v3 Service-Struktur (HA base images ab 2023)
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/claude/dependencies.d \
+    && mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
+    && echo "longrun" > /etc/s6-overlay/s6-rc.d/claude/type \
+    && touch /etc/s6-overlay/s6-rc.d/claude/dependencies.d/base \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/claude
+
+COPY run.sh /etc/s6-overlay/s6-rc.d/claude/run
+RUN chmod a+x /etc/s6-overlay/s6-rc.d/claude/run
 
 CLAUDE_EOF_DOCKERFILE
 

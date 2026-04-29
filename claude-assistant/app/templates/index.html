@@ -216,6 +216,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   checkStatus();
   loadSessions();
+  // Letzte Session wiederherstellen
+  const lastId = localStorage.getItem('last_session_id');
+  if(lastId) {
+    openSession(lastId);
+  }
   // Sidebar-Zustand wiederherstellen
   if(localStorage.getItem('sidebar_collapsed') === '1') {
     document.getElementById('sidebar').classList.add('collapsed');
@@ -272,6 +277,7 @@ async function openSession(id) {
     if(s.error) return;
 
     currentSessionId = id;
+    localStorage.setItem('last_session_id', id);
     messageHistory = s.messages || [];
 
     // Provider aus Session laden
@@ -304,6 +310,7 @@ async function deleteSession(e, id) {
 
 function newChat() {
   currentSessionId = null;
+  localStorage.removeItem('last_session_id');
   messageHistory = [];
   const msgs = document.getElementById('messages');
   msgs.innerHTML = `<div id="welcome"><div class="big-icon">🏠</div><h2>Neuer Chat</h2><p>Was kann ich für dich tun?</p></div>`;
@@ -466,7 +473,7 @@ async function sendMessage() {
       addMessage('assistant', result.response, result.tool_calls, settings.provider);
       messageHistory = result.messages || messageHistory;
       if(!result.messages) messageHistory.push({role:'assistant',content:result.response});
-      if(result.session_id) currentSessionId = result.session_id;
+      if(result.session_id) { currentSessionId = result.session_id; localStorage.setItem('last_session_id', currentSessionId); }
       loadSessions();
     }
   } catch(err) {

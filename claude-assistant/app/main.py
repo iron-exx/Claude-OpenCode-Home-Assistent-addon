@@ -30,8 +30,10 @@ HA_TOKEN   = os.environ.get("SUPERVISOR_TOKEN", "")
 HA_API     = "http://supervisor/core/api"
 ADDON_API  = "http://supervisor"
 
-DEFAULT_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-DEFAULT_MODEL   = os.environ.get("MODEL", "claude-opus-4-5")
+DEFAULT_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
+DEFAULT_MODEL    = os.environ.get("MODEL", "claude-opus-4-5")
+DEFAULT_PROVIDER = os.environ.get("PROVIDER", "anthropic")
+DEFAULT_OPENCODE_URL = os.environ.get("OPENCODE_URL", "")
 
 # ─── Tool-Definitionen ────────────────────────────────────────────────────────
 HA_TOOLS = [
@@ -509,6 +511,113 @@ def execute_tool(name: str, inp: dict) -> str:
 SYSTEM_PROMPT = """Du bist ein Home Assistant KI-Assistent mit vollem Zugriff. Antworte kurz und direkt. Führe Aktionen sofort aus. Antworte auf Deutsch oder Englisch je nach Nutzer. Nur bei destruktiven Massenaktionen kurz nachfragen."""
 
 
+
+# ─── OpenCode Provider ────────────────────────────────────────────────────────
+def chat_with_opencode(messages: list, opencode_url: str) -> dict:
+    """Chat via OpenCode local server API"""
+    base = opencode_url.rstrip("/")
+    
+    # 1. Neue Session erstellen
+    r = requests.post(f"{base}/session", json={}, timeout=10)
+    r.raise_for_status()
+    session_id = r.json()["id"]
+    log.info(f"OpenCode Session: {session_id}")
+    
+    # 2. Letzten User-Message extrahieren
+    user_text = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+            user_text = msg["content"]
+            break
+    
+    # Bisherige Konversation als Kontext einbauen
+    history_text = ""
+    for msg in messages[:-1]:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if isinstance(content, str) and content:
+            history_text += f"{role.upper()}: {content}\n"
+    
+    # System-Kontext an User-Message anhängen wenn History vorhanden
+    full_prompt = user_text
+    if history_text:
+        full_prompt = f"[Bisheriger Verlauf:]\n{history_text}\n[Aktuelle Frage:] {user_text}"
+    
+    # 3. Nachricht senden mit HA-System-Prompt
+    ha_system = f"""{SYSTEM_PROMPT}
+
+WICHTIG: Wenn du HA-Aktionen ausführen willst, schreibe sie als JSON-Block so:
+<ha_action>
+{{"domain": "light", "service": "turn_on", "data": {{"entity_id": "light.beispiel"}}}}
+</ha_action>
+
+Für mehrere Aktionen mehrere solche Blöcke. Für Automationen:
+<ha_automation>
+{{"alias": "Name", "trigger": [...], "action": [...]}}
+</ha_automation>"""
+
+    payload = {
+        "parts": [
+            {"type": "text", "text": ha_system + "\n\n" + full_prompt}
+        ],
+        "model": {"providerID": "opencode", "modelID": "big-pickle"}
+    }
+    
+    r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=120)
+    r.raise_for_status()
+    response_data = r.json()
+    
+    # 4. Text aus Response-Parts extrahieren
+    response_text = ""
+    for part in response_data.get("parts", []):
+        if part.get("type") == "text":
+            response_text += part.get("text", "")
+        elif isinstance(part.get("content"), str):
+            response_text += part["content"]
+    
+    # 5. HA-Aktionen aus Response parsen und ausführen
+    import re
+    tool_calls = []
+    
+    # Parse <ha_action> blocks
+    for match in re.finditer(r'<ha_action>(.*?)</ha_action>', response_text, re.DOTALL):
+        try:
+            action = json.loads(match.group(1).strip())
+            result = execute_tool("call_service", {
+                "domain": action["domain"],
+                "service": action["service"],
+                "service_data": action.get("data", {})
+            })
+            tool_calls.append({"tool": f"{action['domain']}.{action['service']}"})
+            log.info(f"OpenCode HA-Aktion: {action['domain']}.{action['service']}")
+        except Exception as e:
+            log.error(f"OpenCode HA-Aktion Fehler: {e}")
+    
+    # Parse <ha_automation> blocks
+    for match in re.finditer(r'<ha_automation>(.*?)</ha_automation>', response_text, re.DOTALL):
+        try:
+            automation = json.loads(match.group(1).strip())
+            result = execute_tool("create_automation", automation)
+            tool_calls.append({"tool": "create_automation"})
+            log.info(f"OpenCode Automation: {automation.get('alias','?')}")
+        except Exception as e:
+            log.error(f"OpenCode Automation Fehler: {e}")
+    
+    # Aktions-Blöcke aus sichtbarem Text entfernen
+    clean_text = re.sub(r'<ha_action>.*?</ha_action>', '', response_text, flags=re.DOTALL)
+    clean_text = re.sub(r'<ha_automation>.*?</ha_automation>', '', clean_text, flags=re.DOTALL)
+    clean_text = clean_text.strip()
+    
+    # Session aufräumen
+    try:
+        requests.delete(f"{base}/session/{session_id}", timeout=5)
+    except Exception:
+        pass
+    
+    updated_messages = messages + [{"role": "assistant", "content": clean_text}]
+    return {"response": clean_text, "messages": updated_messages, "tool_calls": tool_calls}
+
+
 # ─── API Endpunkte ────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -518,17 +627,33 @@ def index():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.get_json(force=True)
-    log.info(f"Chat-Request: {len(data.get('messages', []))} Nachrichten, model={data.get('model','?')}, api_key={'ja' if (data.get('api_key') or DEFAULT_API_KEY) else 'FEHLT'}")
     messages = data.get("messages", [])
+    provider = data.get("provider") or DEFAULT_PROVIDER
     api_key = data.get("api_key") or DEFAULT_API_KEY
+    opencode_url = data.get("opencode_url") or DEFAULT_OPENCODE_URL
+    model = data.get("model", DEFAULT_MODEL)
 
-    if not api_key:
-        return jsonify({"error": "Kein Anthropic API-Key konfiguriert. Bitte in den Add-on Einstellungen oder im Chat eingeben."}), 400
+    log.info(f"Chat-Request: {len(messages)} Nachrichten, provider={provider}, model={model}")
 
     if not messages:
         return jsonify({"error": "Keine Nachricht übergeben."}), 400
 
-    model = data.get("model", DEFAULT_MODEL)
+    # ── OpenCode Provider ─────────────────────────────────────────────────────
+    if provider == "opencode":
+        if not opencode_url:
+            return jsonify({"error": "Keine OpenCode URL konfiguriert. Bitte in den Einstellungen eintragen (z.B. http://192.168.1.100:4096)"}), 400
+        try:
+            result = chat_with_opencode(messages, opencode_url)
+            return jsonify(result)
+        except requests.ConnectionError:
+            return jsonify({"error": f"Kann OpenCode Server nicht erreichen: {opencode_url} – Läuft 'opencode serve' auf deinem PC?"}), 503
+        except Exception as e:
+            log.error(f"OpenCode Fehler: {e}", exc_info=True)
+            return jsonify({"error": f"OpenCode Fehler: {str(e)}"}), 500
+
+    # ── Anthropic Provider ────────────────────────────────────────────────────
+    if not api_key:
+        return jsonify({"error": "Kein Anthropic API-Key konfiguriert."}), 400
 
     try:
         import anthropic

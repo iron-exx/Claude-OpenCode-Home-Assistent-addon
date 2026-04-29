@@ -25,4 +25,4 @@ schema:
   model: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
 
-image: "ghcr.io/iron-exx/claude-ha-assistant/claude-assistant-{arch}"
+

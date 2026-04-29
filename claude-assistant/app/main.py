@@ -336,14 +336,10 @@ def execute_tool(name: str, inp: dict) -> str:
             if domain:
                 states = [s for s in states if s["entity_id"].startswith(f"{domain}.")]
             result = [
-                {
-                    "id": s["entity_id"],
-                    "state": s["state"],
-                    "name": s["attributes"].get("friendly_name", ""),
-                }
+                f"{s['entity_id']}={s['state']} ({s['attributes'].get('friendly_name','')})"
                 for s in states
             ]
-            return json.dumps(result[:80], ensure_ascii=False)
+            return json.dumps(result[:60], ensure_ascii=False)
 
         # ── get_entity_state ─────────────────────────────────────────────────
         elif name == "get_entity_state":
@@ -510,27 +506,7 @@ def execute_tool(name: str, inp: dict) -> str:
 
 
 # ─── System-Prompt ────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = """Du bist ein intelligenter Home Assistant AI-Assistent mit vollständigem Zugriff auf das Home Assistant System des Benutzers.
-
-**Deine Fähigkeiten:**
-- Alle Geräte lesen und steuern (Lichter, Schalter, Klimaanlage, Rollläden, Mediaplayer, etc.)
-- Automationen erstellen, bearbeiten und löschen
-- Sensordaten und Historien abrufen
-- Szenen aktivieren, Skripte ausführen
-- Systemkonfiguration abfragen
-- Ereignisse auslösen
-
-**Dein Verhalten:**
-1. Führe Aktionen direkt aus, ohne unnötig nachzufragen
-2. Wenn du Informationen brauchst (z.B. welche Entitäten existieren), rufe zuerst das passende Tool auf
-3. Bestätige durchgeführte Aktionen kurz und klar
-4. Antworte in der Sprache des Benutzers (Deutsch/Englisch)
-5. Bei komplexen Aufgaben: erkläre kurz was du tust, bevor du es tust
-6. Du hast vollen Schreibzugriff – bei destruktiven Aktionen (z.B. viele Automationen löschen) frage kurz nach
-
-**Hinweis zum System:** 
-Du läufst als Add-on direkt in Home Assistant. Der Supervisor-Token gewährt dir vollen API-Zugriff.
-"""
+SYSTEM_PROMPT = """Du bist ein Home Assistant KI-Assistent mit vollem Zugriff. Antworte kurz und direkt. Führe Aktionen sofort aus. Antworte auf Deutsch oder Englisch je nach Nutzer. Nur bei destruktiven Massenaktionen kurz nachfragen."""
 
 
 # ─── API Endpunkte ────────────────────────────────────────────────────────────
@@ -587,7 +563,7 @@ def chat():
 
             response = client.messages.create(
                 model=model,
-                max_tokens=4096,
+                max_tokens=1024,
                 system=SYSTEM_PROMPT,
                 tools=HA_TOOLS,
                 messages=trimmed_messages

@@ -1202,12 +1202,16 @@ function getSettings() {
   };
 }
 
+// ── Base URL für HA Ingress ────────────────────────────────────────────────
+// HA Ingress serviert unter /api/hassio_ingress/TOKEN/ – relative URLs nötig
+const BASE = window.location.pathname.replace(/\/+$/, '');
+
 // ── HA Status ──────────────────────────────────────────────────────────────
 async function checkStatus() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
   try {
-    const r = await fetch('/api/status');
+    const r = await fetch(BASE + '/api/status');
     const d = await r.json();
     if (d.ha_connected) {
       dot.className = 'status-dot ok';
@@ -1346,7 +1350,7 @@ async function sendMessage() {
   const settings = getSettings();
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(BASE + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1390,4 +1394,3 @@ CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML
 
 chmod +x "$BASE/run.sh"
 echo "✅ Update fertig!"
-echo "👉 Rebuild in HA nötig!"

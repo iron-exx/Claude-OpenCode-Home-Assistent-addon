@@ -37,6 +37,9 @@ schema:
   model: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
 
+map:
+  - config:rw
+
 
 
 CLAUDE_EOF_CONFIG_YAML
@@ -86,6 +89,7 @@ cat > "$BASE/app/requirements.txt" << 'CLAUDE_EOF_APP_REQUIREMENTS_TXT'
 flask==3.0.3
 anthropic>=0.49.0
 requests==2.32.3
+pyyaml>=6.0
 
 CLAUDE_EOF_APP_REQUIREMENTS_TXT
 
@@ -429,15 +433,13 @@ def execute_tool(name: str, inp: dict) -> str:
                 states = [s for s in states if s["entity_id"].startswith(f"{domain}.")]
             result = [
                 {
-                    "entity_id": s["entity_id"],
+                    "id": s["entity_id"],
                     "state": s["state"],
-                    "name": s["attributes"].get("friendly_name", s["entity_id"]),
-                    "unit": s["attributes"].get("unit_of_measurement", ""),
+                    "name": s["attributes"].get("friendly_name", ""),
                 }
                 for s in states
             ]
-            # Limit output to avoid token overflow
-            return json.dumps(result[:150], ensure_ascii=False)
+            return json.dumps(result[:80], ensure_ascii=False)
 
         # ── get_entity_state ─────────────────────────────────────────────────
         elif name == "get_entity_state":
@@ -485,6 +487,8 @@ def execute_tool(name: str, inp: dict) -> str:
 
         # ── create_automation ────────────────────────────────────────────────
         elif name == "create_automation":
+            import yaml as _yaml
+            import time as _time
             automation = {
                 "alias": inp["alias"],
                 "description": inp.get("description", ""),
@@ -494,14 +498,26 @@ def execute_tool(name: str, inp: dict) -> str:
             }
             if "condition" in inp:
                 automation["condition"] = inp["condition"]
-            result = ha_post("/config/automation/config", automation)
-            return json.dumps({"success": True, "automation_id": result.get("result"), "message": f"Automation '{inp['alias']}' erstellt."}, ensure_ascii=False)
+            # HA config dir ist unter /config gemountet
+            automations_dir = "/config/automations"
+            os.makedirs(automations_dir, exist_ok=True)
+            slug = inp["alias"].lower().replace(" ", "_").replace("/","_")[:40]
+            filename = f"{automations_dir}/claude_{slug}_{int(_time.time())}.yaml"
+            with open(filename, "w", encoding="utf-8") as f:
+                _yaml.dump([automation], f, allow_unicode=True, default_flow_style=False)
+            # Automationen neu laden
+            ha_post("/services/automation/reload", {})
+            return json.dumps({"success": True, "file": filename, "message": f"Automation '{inp['alias']}' erstellt und geladen."}, ensure_ascii=False)
 
         # ── update_automation ────────────────────────────────────────────────
         elif name == "update_automation":
             auto_id = inp.pop("automation_id")
-            result = ha_post(f"/config/automation/config/{auto_id}", inp)
-            return json.dumps({"success": True, "result": result}, ensure_ascii=False)
+            # Try REST API first, fallback message if not available
+            try:
+                result = ha_post(f"/config/automation/config/{auto_id}", inp)
+                return json.dumps({"success": True, "result": result}, ensure_ascii=False)
+            except Exception:
+                return json.dumps({"error": "Update via ID nicht möglich. Bitte Automation löschen und neu erstellen."}, ensure_ascii=False)
 
         # ── delete_automation ────────────────────────────────────────────────
         elif name == "delete_automation":

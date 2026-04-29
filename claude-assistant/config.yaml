@@ -30,4 +30,7 @@ schema:
   model: str
   log_level: list(trace|debug|info|notice|warning|error|fatal)
 
+map:
+  - config:rw
+
 

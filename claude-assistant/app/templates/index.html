@@ -219,8 +219,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // Letzte Session wiederherstellen
   const lastId = localStorage.getItem('last_session_id');
   if(lastId) {
-    openSession(lastId);
+    setTimeout(() => openSession(lastId), 300); // kurz warten bis DOM bereit
   }
+
+  // Wenn Tab wieder sichtbar wird: Session neu laden
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible') {
+      checkStatus();
+      loadSessions();
+      const sid = localStorage.getItem('last_session_id');
+      if(sid && sid === currentSessionId) {
+        // Nur neu laden wenn Nachrichten fehlen
+        const msgs = document.getElementById('messages');
+        if(msgs && msgs.children.length <= 1) {
+          openSession(sid);
+        }
+      } else if(sid && !currentSessionId) {
+        openSession(sid);
+      }
+    }
+  });
   // Sidebar-Zustand wiederherstellen
   if(localStorage.getItem('sidebar_collapsed') === '1') {
     document.getElementById('sidebar').classList.add('collapsed');

@@ -27,16 +27,83 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # ─── Async Job Store ─────────────────────────────────────────────────────────
 _jobs = {}  # job_id -> {"status": "pending/done/error", "result": {...}}
 
-def run_chat_job(job_id: str, messages: list, provider: str, api_key: str, model: str, opencode_url: str):
+def run_chat_job(job_id: str, messages: list, provider: str, api_key: str, model: str, opencode_url: str, session_id: str = ""):
     try:
         if provider == "opencode":
             result = chat_with_opencode(messages, opencode_url)
         else:
             result = chat_with_anthropic(messages, api_key, model)
-        _jobs[job_id] = {"status": "done", "result": result}
+        # Session speichern
+        if session_id and result.get("messages"):
+            title = make_title(result["messages"])
+            session_save(session_id, title, result["messages"], provider)
+        _jobs[job_id] = {"status": "done", "result": {**result, "session_id": session_id}}
     except Exception as e:
         log.error(f"Job {job_id} failed: {e}", exc_info=True)
         _jobs[job_id] = {"status": "error", "result": {"error": str(e)}}
+
+
+# ─── Session Storage ─────────────────────────────────────────────────────────
+SESSIONS_DIR = "/data/sessions"
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+def session_list():
+    sessions = []
+    try:
+        for f in sorted(os.listdir(SESSIONS_DIR), reverse=True):
+            if f.endswith(".json"):
+                path = os.path.join(SESSIONS_DIR, f)
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        s = json.load(fh)
+                    sessions.append({
+                        "id": s["id"],
+                        "title": s.get("title", "Chat"),
+                        "provider": s.get("provider", "anthropic"),
+                        "updated_at": s.get("updated_at", ""),
+                        "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
+                    })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return sessions
+
+
+def session_save(session_id: str, title: str, messages: list, provider: str):
+    import time
+    path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({
+            "id": session_id,
+            "title": title,
+            "provider": provider,
+            "messages": messages,
+            "updated_at": time.strftime("%Y-%m-%d %H:%M")
+        }, f, ensure_ascii=False, indent=2)
+
+
+def session_load(session_id: str):
+    path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def session_delete(session_id: str):
+    path = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def make_title(messages: list) -> str:
+    """Ersten User-Text als Titel kürzen."""
+    for msg in messages:
+        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+            t = msg["content"][:50].strip()
+            return t + ("..." if len(msg["content"]) > 50 else "")
+    return "Chat"
 
 
 @app.errorhandler(Exception)
@@ -944,8 +1011,9 @@ def chat():
 
     # Async Job starten
     job_id = str(uuid.uuid4())
+    session_id = data.get("session_id") or str(uuid.uuid4())
     _jobs[job_id] = {"status": "pending"}
-    t = threading.Thread(target=run_chat_job, args=(job_id, messages, provider, api_key, model, opencode_url), daemon=True)
+    t = threading.Thread(target=run_chat_job, args=(job_id, messages, provider, api_key, model, opencode_url, session_id), daemon=True)
     t.start()
     return jsonify({"job_id": job_id})
 
@@ -963,6 +1031,25 @@ def chat_poll(job_id):
     if job["status"] == "error":
         return jsonify({"status": "error", **result})
     return jsonify({"status": "done", **result})
+
+
+@app.route("/api/sessions", methods=["GET"])
+def get_sessions():
+    return jsonify(session_list())
+
+
+@app.route("/api/sessions/<session_id>", methods=["GET"])
+def get_session(session_id):
+    s = session_load(session_id)
+    if not s:
+        return jsonify({"error": "Session nicht gefunden"}), 404
+    return jsonify(s)
+
+
+@app.route("/api/sessions/<session_id>", methods=["DELETE"])
+def delete_session(session_id):
+    session_delete(session_id)
+    return jsonify({"deleted": True})
 
 
 @app.route("/api/status", methods=["GET"])

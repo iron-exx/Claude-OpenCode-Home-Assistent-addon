@@ -38,11 +38,11 @@ CLAUDE_EOF_CONFIG_YAML
 
 cat > "$BASE/build.yaml" << 'CLAUDE_EOF_BUILD_YAML'
 build_from:
-  aarch64: "python:3.11-alpine"
-  amd64: "python:3.11-alpine"
-  armhf: "python:3.11-alpine"
-  armv7: "python:3.11-alpine"
-  i386: "python:3.11-alpine"
+  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.11-alpine3.18"
+  amd64: "ghcr.io/home-assistant/amd64-base-python:3.11-alpine3.18"
+  armhf: "ghcr.io/home-assistant/armhf-base-python:3.11-alpine3.18"
+  armv7: "ghcr.io/home-assistant/armv7-base-python:3.11-alpine3.18"
+  i386: "ghcr.io/home-assistant/i386-base-python:3.11-alpine3.18"
 
 CLAUDE_EOF_BUILD_YAML
 
@@ -50,43 +50,34 @@ cat > "$BASE/Dockerfile" << 'CLAUDE_EOF_DOCKERFILE'
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# jq für Config-Parsing, curl für Health-Checks
-RUN apk add --no-cache jq curl
+# jq für Config-Lesen
+RUN apk add --no-cache jq
 
 WORKDIR /app
 
-# Requirements zuerst (besseres Layer-Caching)
 COPY app/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App-Code
 COPY app/ /app/
 
-# Startscript
-COPY run.sh /run.sh
-RUN chmod a+x /run.sh
-
-EXPOSE 8099
-
-CMD ["/run.sh"]
+# s6-Service anlegen – HA Base Images nutzen s6-overlay als Init
+RUN mkdir -p /etc/services.d/claude
+COPY run.sh /etc/services.d/claude/run
+RUN chmod a+x /etc/services.d/claude/run
 
 CLAUDE_EOF_DOCKERFILE
 
 cat > "$BASE/run.sh" << 'CLAUDE_EOF_RUN_SH'
-#!/bin/bash
-set -e
+#!/usr/bin/with-contenv bashio
 
-# Read options from HA config
-CONFIG_PATH=/data/options.json
+bashio::log.info "Claude AI Assistant startet..."
 
-ANTHROPIC_API_KEY=$(jq --raw-output '.anthropic_api_key' $CONFIG_PATH)
-MODEL=$(jq --raw-output '.model // "claude-opus-4-5"' $CONFIG_PATH)
+# API-Key und Modell aus HA-Konfiguration lesen
+export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
+export MODEL=$(bashio::config 'model')
 
-export ANTHROPIC_API_KEY
-export MODEL
-
-echo "[Claude Assistant] Starting..."
-echo "[Claude Assistant] Model: $MODEL"
+bashio::log.info "Modell: ${MODEL}"
+bashio::log.info "API-Key gesetzt: $([ -n "$ANTHROPIC_API_KEY" ] && echo 'ja' || echo 'FEHLT!')"
 
 exec python3 /app/main.py
 
@@ -1390,6 +1381,5 @@ async function sendMessage() {
 CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML
 
 chmod +x "$BASE/run.sh"
-echo ""
 echo "✅ Update fertig!"
 echo "👉 In HA: Add-on Store → drei Punkte → Lokale Add-ons neu laden → Rebuild"

@@ -667,7 +667,7 @@ Für mehrere Aktionen mehrere solche Blöcke. Für Automationen:
         "model": {"providerID": "opencode", "modelID": "big-pickle"}
     }
     
-    r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=120)
+    r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=180)
     r.raise_for_status()
     response_data = r.json()
     
@@ -1192,11 +1192,15 @@ async function sendMessage() {
   addTyping();
   const settings = getSettings();
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180000); // 3 Minuten
     const res = await fetch(BASE + '/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({messages:messageHistory, ...settings})
+      body: JSON.stringify({messages:messageHistory, ...settings}),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     document.getElementById('typing-msg')?.remove();
     const data = await res.json();
     if(data.error) {
@@ -1208,7 +1212,8 @@ async function sendMessage() {
     }
   } catch(err) {
     document.getElementById('typing-msg')?.remove();
-    addMessage('assistant', '❌ Netzwerkfehler: ' + err.message);
+    const msg = err.name==='AbortError' ? '⏱ Zeitüberschreitung – OpenCode braucht zu lange. Bitte nochmal versuchen.' : '❌ Netzwerkfehler: ' + err.message;
+    addMessage('assistant', msg);
   } finally {
     isLoading = false;
     document.getElementById('send-btn').disabled = false;

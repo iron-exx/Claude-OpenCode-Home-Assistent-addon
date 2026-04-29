@@ -566,7 +566,7 @@ Für mehrere Aktionen mehrere solche Blöcke. Für Automationen:
         "model": {"providerID": "opencode", "modelID": "big-pickle"}
     }
     
-    r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=120)
+    r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=180)
     r.raise_for_status()
     response_data = r.json()
     

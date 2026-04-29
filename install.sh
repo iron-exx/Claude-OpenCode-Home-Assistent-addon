@@ -614,110 +614,313 @@ SYSTEM_PROMPT = """Du bist ein Home Assistant KI-Assistent mit vollem Zugriff. A
 
 
 # ─── OpenCode Provider ────────────────────────────────────────────────────────
+
+HA_ACTIONS_PROMPT = """
+Du hast vollen Schreibzugriff auf Home Assistant. Verwende folgende Befehls-Blöcke:
+
+1. Gerät steuern:
+<ha_action>
+{"domain": "light", "service": "turn_on", "data": {"entity_id": "light.xyz", "brightness_pct": 50}}
+</ha_action>
+
+2. Automation erstellen/aktualisieren:
+<ha_automation>
+{"alias": "Name", "description": "...", "trigger": [...], "condition": [...], "action": [...], "mode": "single"}
+</ha_automation>
+
+3. Template-Sensor erstellen:
+<ha_template_sensor>
+{"name": "Anzeigename", "unique_id": "eindeutige_id", "unit_of_measurement": "W", "device_class": "power", "state_class": "measurement", "state": "{{ states('sensor.xyz') | float(0) + states('sensor.abc') | float(0) }}"}
+</ha_template_sensor>
+
+4. Skript erstellen:
+<ha_script>
+{"alias": "Skript Name", "unique_id": "skript_id", "sequence": [{"service": "light.turn_on", "target": {"entity_id": "light.xyz"}}]}
+</ha_script>
+
+5. Szene erstellen:
+<ha_scene>
+{"name": "Szenen Name", "unique_id": "szene_id", "entities": {"light.xyz": {"state": "on", "brightness": 200}}}
+</ha_scene>
+
+6. HA-Komponente neu laden:
+<ha_reload>{"target": "automation"}</ha_reload>
+(target kann sein: automation, template, script, scene, all)
+
+7. HA komplett neu starten:
+<ha_restart></ha_restart>
+
+WICHTIG: Schreibe IMMER die passenden Blöcke – nicht nur erklären! Führe Änderungen direkt aus.
+Mehrere Blöcke hintereinander sind erlaubt.
+"""
+
+
+def ensure_config_include(filename: str, section_key: str):
+    """Stellt sicher dass eine Datei in configuration.yaml eingebunden ist."""
+    config_file = "/config/configuration.yaml"
+    include_line = f"{section_key}: !include {filename}"
+    try:
+        with open(config_file, "r", encoding="utf-8") as f:
+            config_content = f.read()
+        if filename not in config_content:
+            with open(config_file, "a", encoding="utf-8") as f:
+                f.write(f"\n{include_line}\n")
+            log.info(f"Added {include_line} to configuration.yaml")
+    except Exception as e:
+        log.warning(f"Could not update configuration.yaml: {e}")
+
+
+def write_template_sensor(sensor: dict) -> str:
+    """Template-Sensor in /config/template.yaml schreiben."""
+    import yaml as _yaml
+    template_file = "/config/template.yaml"
+    existing = []
+    if os.path.exists(template_file):
+        with open(template_file, "r", encoding="utf-8") as f:
+            existing = _yaml.safe_load(f) or []
+    if not isinstance(existing, list):
+        existing = [existing] if existing else []
+
+    # Duplikat-Check per unique_id
+    uid = sensor.get("unique_id", "")
+    existing = [e for e in existing if not (isinstance(e, dict) and 
+                e.get("sensor", [{}])[0].get("unique_id") == uid if e.get("sensor") else False)]
+
+    entry = {"sensor": [sensor]}
+    existing.append(entry)
+
+    with open(template_file, "w", encoding="utf-8") as f:
+        _yaml.dump(existing, f, allow_unicode=True, default_flow_style=False)
+
+    ensure_config_include("template.yaml", "template")
+    return f"Template-Sensor '{sensor.get('name')}' in template.yaml geschrieben."
+
+
+def write_script(script: dict) -> str:
+    """Skript in /config/scripts.yaml schreiben."""
+    import yaml as _yaml
+    scripts_file = "/config/scripts.yaml"
+    existing = {}
+    if os.path.exists(scripts_file):
+        with open(scripts_file, "r", encoding="utf-8") as f:
+            existing = _yaml.safe_load(f) or {}
+    if not isinstance(existing, dict):
+        existing = {}
+
+    uid = script.get("unique_id") or script.get("alias", "").lower().replace(" ", "_")
+    existing[uid] = {k: v for k, v in script.items() if k != "unique_id"}
+
+    with open(scripts_file, "w", encoding="utf-8") as f:
+        _yaml.dump(existing, f, allow_unicode=True, default_flow_style=False)
+    return f"Skript '{script.get('alias')}' in scripts.yaml geschrieben."
+
+
+def write_scene(scene: dict) -> str:
+    """Szene in /config/scenes.yaml schreiben."""
+    import yaml as _yaml
+    scenes_file = "/config/scenes.yaml"
+    existing = []
+    if os.path.exists(scenes_file):
+        with open(scenes_file, "r", encoding="utf-8") as f:
+            existing = _yaml.safe_load(f) or []
+    if not isinstance(existing, list):
+        existing = []
+
+    uid = scene.get("unique_id", "")
+    existing = [s for s in existing if s.get("unique_id") != uid]
+    existing.append(scene)
+
+    with open(scenes_file, "w", encoding="utf-8") as f:
+        _yaml.dump(existing, f, allow_unicode=True, default_flow_style=False)
+    return f"Szene '{scene.get('name')}' in scenes.yaml geschrieben."
+
+
+def ha_reload(target: str):
+    """HA-Komponente neu laden."""
+    reload_map = {
+        "automation": ("automation", "reload"),
+        "template":   ("homeassistant", "reload_config_entry"),
+        "script":     ("script", "reload"),
+        "scene":      ("scene", "reload"),
+        "all":        ("homeassistant", "reload_all"),
+    }
+    if target == "template":
+        # Template reload braucht andere Methode
+        try:
+            ha_post("/services/homeassistant/reload_all", {})
+        except Exception:
+            pass
+        return
+    if target in reload_map:
+        domain, service = reload_map[target]
+        try:
+            ha_post(f"/services/{domain}/{service}", {})
+        except Exception as e:
+            log.warning(f"Reload {target} failed: {e}")
+
+
 def chat_with_opencode(messages: list, opencode_url: str) -> dict:
-    """Chat via OpenCode local server API"""
-    opencode_url = opencode_url.strip().rstrip("/.").rstrip("/")
-    if not opencode_url.startswith("http"):
-        opencode_url = "http://" + opencode_url
-    base = opencode_url
-    
-    # 1. Neue Session erstellen
+    """Chat via OpenCode local server API mit vollem HA-Zugriff."""
+    import re
+    import yaml as _yaml
+
+    base = opencode_url.strip().rstrip("/.").rstrip("/")
+    if not base.startswith("http"):
+        base = "http://" + base
+
+    # Session erstellen
     r = requests.post(f"{base}/session", json={}, timeout=10)
     r.raise_for_status()
     session_id = r.json()["id"]
     log.info(f"OpenCode Session: {session_id}")
-    
-    # 2. Letzten User-Message extrahieren
+
+    # Letzten User-Text extrahieren
     user_text = ""
     for msg in reversed(messages):
         if msg.get("role") == "user" and isinstance(msg.get("content"), str):
             user_text = msg["content"]
             break
-    
-    # Bisherige Konversation als Kontext einbauen
+
+    # History als Kontext
     history_text = ""
     for msg in messages[:-1]:
         role = msg.get("role", "")
         content = msg.get("content", "")
         if isinstance(content, str) and content:
             history_text += f"{role.upper()}: {content}\n"
-    
-    # System-Kontext an User-Message anhängen wenn History vorhanden
+
     full_prompt = user_text
     if history_text:
-        full_prompt = f"[Bisheriger Verlauf:]\n{history_text}\n[Aktuelle Frage:] {user_text}"
-    
-    # 3. Nachricht senden mit HA-System-Prompt
-    ha_system = f"""{SYSTEM_PROMPT}
+        full_prompt = f"[Bisheriger Verlauf:]\n{history_text}\n[Aktuelle Anfrage:] {user_text}"
 
-WICHTIG: Wenn du HA-Aktionen ausführen willst, schreibe sie als JSON-Block so:
-<ha_action>
-{{"domain": "light", "service": "turn_on", "data": {{"entity_id": "light.beispiel"}}}}
-</ha_action>
-
-Für mehrere Aktionen mehrere solche Blöcke. Für Automationen:
-<ha_automation>
-{{"alias": "Name", "trigger": [...], "action": [...]}}
-</ha_automation>"""
+    # Aktuelle HA-Entitäten als Kontext mitgeben
+    try:
+        states = ha_get("/states")
+        entity_summary = ", ".join([
+            f"{s['entity_id']}={s['state']}"
+            for s in states[:60]
+        ])
+        ha_context = f"\n\n[Verfügbare HA-Entitäten (Auswahl)]: {entity_summary}"
+    except Exception:
+        ha_context = ""
 
     payload = {
-        "parts": [
-            {"type": "text", "text": ha_system + "\n\n" + full_prompt}
-        ],
+        "parts": [{"type": "text", "text": SYSTEM_PROMPT + HA_ACTIONS_PROMPT + ha_context + "\n\n" + full_prompt}],
         "model": {"providerID": "opencode", "modelID": "big-pickle"}
     }
-    
+
     r = requests.post(f"{base}/session/{session_id}/message", json=payload, timeout=180)
     r.raise_for_status()
     response_data = r.json()
-    
-    # 4. Text aus Response-Parts extrahieren
+
+    # Text aus Response
     response_text = ""
     for part in response_data.get("parts", []):
         if part.get("type") == "text":
             response_text += part.get("text", "")
         elif isinstance(part.get("content"), str):
             response_text += part["content"]
-    
-    # 5. HA-Aktionen aus Response parsen und ausführen
-    import re
+
     tool_calls = []
-    
-    # Parse <ha_action> blocks
+    results_log = []
+
+    # ── ha_action ─────────────────────────────────────────────────────────────
     for match in re.finditer(r'<ha_action>(.*?)</ha_action>', response_text, re.DOTALL):
         try:
             action = json.loads(match.group(1).strip())
-            result = execute_tool("call_service", {
+            execute_tool("call_service", {
                 "domain": action["domain"],
                 "service": action["service"],
                 "service_data": action.get("data", {})
             })
             tool_calls.append({"tool": f"{action['domain']}.{action['service']}"})
-            log.info(f"OpenCode HA-Aktion: {action['domain']}.{action['service']}")
+            results_log.append(f"✅ Ausgeführt: {action['domain']}.{action['service']}")
         except Exception as e:
-            log.error(f"OpenCode HA-Aktion Fehler: {e}")
-    
-    # Parse <ha_automation> blocks
+            results_log.append(f"❌ ha_action Fehler: {e}")
+            log.error(f"ha_action: {e}")
+
+    # ── ha_automation ─────────────────────────────────────────────────────────
     for match in re.finditer(r'<ha_automation>(.*?)</ha_automation>', response_text, re.DOTALL):
         try:
             automation = json.loads(match.group(1).strip())
-            result = execute_tool("create_automation", automation)
+            execute_tool("create_automation", automation)
             tool_calls.append({"tool": "create_automation"})
-            log.info(f"OpenCode Automation: {automation.get('alias','?')}")
+            results_log.append(f"✅ Automation '{automation.get('alias')}' erstellt")
         except Exception as e:
-            log.error(f"OpenCode Automation Fehler: {e}")
-    
-    # Aktions-Blöcke aus sichtbarem Text entfernen
-    clean_text = re.sub(r'<ha_action>.*?</ha_action>', '', response_text, flags=re.DOTALL)
-    clean_text = re.sub(r'<ha_automation>.*?</ha_automation>', '', clean_text, flags=re.DOTALL)
-    clean_text = clean_text.strip()
-    
+            results_log.append(f"❌ Automation Fehler: {e}")
+            log.error(f"ha_automation: {e}")
+
+    # ── ha_template_sensor ────────────────────────────────────────────────────
+    for match in re.finditer(r'<ha_template_sensor>(.*?)</ha_template_sensor>', response_text, re.DOTALL):
+        try:
+            sensor = json.loads(match.group(1).strip())
+            msg = write_template_sensor(sensor)
+            ha_reload("template")
+            tool_calls.append({"tool": "template_sensor"})
+            results_log.append(f"✅ {msg}")
+        except Exception as e:
+            results_log.append(f"❌ Template-Sensor Fehler: {e}")
+            log.error(f"ha_template_sensor: {e}")
+
+    # ── ha_script ─────────────────────────────────────────────────────────────
+    for match in re.finditer(r'<ha_script>(.*?)</ha_script>', response_text, re.DOTALL):
+        try:
+            script = json.loads(match.group(1).strip())
+            msg = write_script(script)
+            ha_reload("script")
+            tool_calls.append({"tool": "script"})
+            results_log.append(f"✅ {msg}")
+        except Exception as e:
+            results_log.append(f"❌ Skript Fehler: {e}")
+            log.error(f"ha_script: {e}")
+
+    # ── ha_scene ──────────────────────────────────────────────────────────────
+    for match in re.finditer(r'<ha_scene>(.*?)</ha_scene>', response_text, re.DOTALL):
+        try:
+            scene = json.loads(match.group(1).strip())
+            msg = write_scene(scene)
+            ha_reload("scene")
+            tool_calls.append({"tool": "scene"})
+            results_log.append(f"✅ {msg}")
+        except Exception as e:
+            results_log.append(f"❌ Szene Fehler: {e}")
+            log.error(f"ha_scene: {e}")
+
+    # ── ha_reload ─────────────────────────────────────────────────────────────
+    for match in re.finditer(r'<ha_reload>(.*?)</ha_reload>', response_text, re.DOTALL):
+        try:
+            data = json.loads(match.group(1).strip())
+            target = data.get("target", "all")
+            ha_reload(target)
+            tool_calls.append({"tool": f"reload_{target}"})
+            results_log.append(f"✅ {target} neu geladen")
+        except Exception as e:
+            results_log.append(f"❌ Reload Fehler: {e}")
+
+    # ── ha_restart ────────────────────────────────────────────────────────────
+    if re.search(r'<ha_restart\s*/?>', response_text):
+        try:
+            ha_post("/services/homeassistant/restart", {})
+            tool_calls.append({"tool": "ha_restart"})
+            results_log.append("✅ Home Assistant wird neu gestartet...")
+        except Exception as e:
+            results_log.append(f"❌ Restart Fehler: {e}")
+
     # Session aufräumen
     try:
         requests.delete(f"{base}/session/{session_id}", timeout=5)
     except Exception:
         pass
-    
+
+    # Blöcke aus sichtbarem Text entfernen
+    clean_text = re.sub(r'<ha_[a-z_]+>.*?</ha_[a-z_]+>', '', response_text, flags=re.DOTALL)
+    clean_text = re.sub(r'<ha_restart\s*/?>', '', clean_text)
+    clean_text = clean_text.strip()
+
+    # Ausgeführte Aktionen ans Ende anhängen
+    if results_log:
+        clean_text += "\n\n---\n" + "\n".join(results_log)
+
     updated_messages = messages + [{"role": "assistant", "content": clean_text}]
     return {"response": clean_text, "messages": updated_messages, "tool_calls": tool_calls}
 

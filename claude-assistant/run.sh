@@ -1,12 +1,7 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/sh
+# Config direkt aus HA options.json lesen – kein bashio nötig
+export ANTHROPIC_API_KEY=$(python3 -c "import json; d=json.load(open('/data/options.json')); print(d.get('anthropic_api_key',''))" 2>/dev/null || echo "")
+export MODEL=$(python3 -c "import json; d=json.load(open('/data/options.json')); print(d.get('model','claude-opus-4-5'))" 2>/dev/null || echo "claude-opus-4-5")
 
-bashio::log.info "Claude AI Assistant startet..."
-
-# API-Key und Modell aus HA-Konfiguration lesen
-export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
-export MODEL=$(bashio::config 'model')
-
-bashio::log.info "Modell: ${MODEL}"
-bashio::log.info "API-Key gesetzt: $([ -n "$ANTHROPIC_API_KEY" ] && echo 'ja' || echo 'FEHLT!')"
-
+echo "[Claude] Starte... Modell: $MODEL"
 exec python3 /app/main.py

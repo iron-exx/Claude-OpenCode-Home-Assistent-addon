@@ -58,31 +58,21 @@ COPY app/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ /app/
+COPY run.sh /run.sh
+RUN chmod a+x /run.sh
 
-# s6-overlay v3 Service-Struktur (HA base images ab 2023)
-RUN mkdir -p /etc/s6-overlay/s6-rc.d/claude/dependencies.d \
-    && mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
-    && echo "longrun" > /etc/s6-overlay/s6-rc.d/claude/type \
-    && touch /etc/s6-overlay/s6-rc.d/claude/dependencies.d/base \
-    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/claude
-
-COPY run.sh /etc/s6-overlay/s6-rc.d/claude/run
-RUN chmod a+x /etc/s6-overlay/s6-rc.d/claude/run
+# run.sh direkt als PID 1 – kein s6-overlay
+ENTRYPOINT ["/run.sh"]
 
 CLAUDE_EOF_DOCKERFILE
 
 cat > "$BASE/run.sh" << 'CLAUDE_EOF_RUN_SH'
-#!/usr/bin/with-contenv bashio
+#!/bin/sh
+# Config direkt aus HA options.json lesen – kein bashio nötig
+export ANTHROPIC_API_KEY=$(python3 -c "import json; d=json.load(open('/data/options.json')); print(d.get('anthropic_api_key',''))" 2>/dev/null || echo "")
+export MODEL=$(python3 -c "import json; d=json.load(open('/data/options.json')); print(d.get('model','claude-opus-4-5'))" 2>/dev/null || echo "claude-opus-4-5")
 
-bashio::log.info "Claude AI Assistant startet..."
-
-# API-Key und Modell aus HA-Konfiguration lesen
-export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
-export MODEL=$(bashio::config 'model')
-
-bashio::log.info "Modell: ${MODEL}"
-bashio::log.info "API-Key gesetzt: $([ -n "$ANTHROPIC_API_KEY" ] && echo 'ja' || echo 'FEHLT!')"
-
+echo "[Claude] Starte... Modell: $MODEL"
 exec python3 /app/main.py
 
 CLAUDE_EOF_RUN_SH
@@ -1386,4 +1376,4 @@ CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML
 
 chmod +x "$BASE/run.sh"
 echo "✅ Update fertig!"
-echo "👉 In HA: Add-on Store → drei Punkte → Lokale Add-ons neu laden → Rebuild"
+echo "👉 In HA: Add-on Store → Lokale Add-ons neu laden → Rebuild"

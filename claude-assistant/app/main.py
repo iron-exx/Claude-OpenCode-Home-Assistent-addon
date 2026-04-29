@@ -402,16 +402,21 @@ def execute_tool(name: str, inp: dict) -> str:
             }
             if "condition" in inp:
                 automation["condition"] = inp["condition"]
-            # HA config dir ist unter /config gemountet
-            automations_dir = "/config/automations"
-            os.makedirs(automations_dir, exist_ok=True)
-            slug = inp["alias"].lower().replace(" ", "_").replace("/","_")[:40]
-            filename = f"{automations_dir}/claude_{slug}_{int(_time.time())}.yaml"
-            with open(filename, "w", encoding="utf-8") as f:
-                _yaml.dump([automation], f, allow_unicode=True, default_flow_style=False)
+            # In /homeassistant/automations.yaml anhängen
+            automations_file = "/homeassistant/automations.yaml"
+            # Bestehende Automationen lesen
+            existing = []
+            if os.path.exists(automations_file):
+                with open(automations_file, "r", encoding="utf-8") as f:
+                    existing = _yaml.safe_load(f) or []
+            if not isinstance(existing, list):
+                existing = []
+            existing.append(automation)
+            with open(automations_file, "w", encoding="utf-8") as f:
+                _yaml.dump(existing, f, allow_unicode=True, default_flow_style=False)
             # Automationen neu laden
             ha_post("/services/automation/reload", {})
-            return json.dumps({"success": True, "file": filename, "message": f"Automation '{inp['alias']}' erstellt und geladen."}, ensure_ascii=False)
+            return json.dumps({"success": True, "file": automations_file, "message": f"Automation '{inp['alias']}' in automations.yaml geschrieben und geladen."}, ensure_ascii=False)
 
         # ── update_automation ────────────────────────────────────────────────
         elif name == "update_automation":

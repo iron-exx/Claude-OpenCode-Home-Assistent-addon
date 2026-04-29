@@ -17,8 +17,27 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+import threading
+import uuid
+import time
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = Flask(__name__, template_folder="templates", static_folder="static")
+
+# ─── Async Job Store ─────────────────────────────────────────────────────────
+_jobs = {}  # job_id -> {"status": "pending/done/error", "result": {...}}
+
+def run_chat_job(job_id: str, messages: list, provider: str, api_key: str, model: str, opencode_url: str):
+    try:
+        if provider == "opencode":
+            result = chat_with_opencode(messages, opencode_url)
+        else:
+            result = chat_with_anthropic(messages, api_key, model)
+        _jobs[job_id] = {"status": "done", "result": result}
+    except Exception as e:
+        log.error(f"Job {job_id} failed: {e}", exc_info=True)
+        _jobs[job_id] = {"status": "error", "result": {"error": str(e)}}
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -830,83 +849,43 @@ def index():
     return render_template("index.html", default_model=DEFAULT_MODEL, has_api_key=bool(DEFAULT_API_KEY))
 
 
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    data = request.get_json(force=True)
-    messages = data.get("messages", [])
-    provider = data.get("provider") or DEFAULT_PROVIDER
-    api_key = data.get("api_key") or DEFAULT_API_KEY
-    opencode_url = data.get("opencode_url") or DEFAULT_OPENCODE_URL
-    model = data.get("model", DEFAULT_MODEL)
-
-    log.info(f"Chat-Request: {len(messages)} Nachrichten, provider={provider}, model={model}")
-
-    if not messages:
-        return jsonify({"error": "Keine Nachricht übergeben."}), 400
-
-    # ── OpenCode Provider ─────────────────────────────────────────────────────
-    if provider == "opencode":
-        if not opencode_url:
-            return jsonify({"error": "Keine OpenCode URL konfiguriert. Bitte in den Einstellungen eintragen (z.B. http://192.168.1.100:4096)"}), 400
-        try:
-            result = chat_with_opencode(messages, opencode_url)
-            return jsonify(result)
-        except requests.ConnectionError:
-            return jsonify({"error": f"Kann OpenCode Server nicht erreichen: {opencode_url} – Läuft 'opencode serve' auf deinem PC?"}), 503
-        except Exception as e:
-            log.error(f"OpenCode Fehler: {e}", exc_info=True)
-            return jsonify({"error": f"OpenCode Fehler: {str(e)}"}), 500
-
-    # ── Anthropic Provider ────────────────────────────────────────────────────
-    if not api_key:
-        return jsonify({"error": "Kein Anthropic API-Key konfiguriert."}), 400
-
+def chat_with_anthropic(messages, api_key, model):
+    """Anthropic chat als eigenständige Funktion für async."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
     except Exception as e:
-        return jsonify({"error": f"Anthropic Client Fehler: {e}"}), 500
+        return {"error": f"Anthropic Client Fehler: {e}"}
 
-    # Agentischer Loop: Claude kann mehrfach Tools aufrufen
     current_messages = messages.copy()
     tool_calls_log = []
-    MAX_ITERATIONS = 10
 
-    for iteration in range(MAX_ITERATIONS):
-        try:
-            # Tool-Ergebnisse in älteren Nachrichten kürzen um Tokens zu sparen
-            trimmed_messages = []
-            for i, msg in enumerate(current_messages):
-                if isinstance(msg.get("content"), list):
-                    new_content = []
-                    for block in msg["content"]:
-                        if isinstance(block, dict) and block.get("type") == "tool_result":
-                            # Nur in älteren Nachrichten kürzen (nicht die letzte)
-                            if i < len(current_messages) - 1 and len(str(block.get("content", ""))) > 500:
-                                new_content.append({**block, "content": str(block.get("content",""))[:300] + "... [gekürzt]"})
-                            else:
-                                new_content.append(block)
+    for iteration in range(10):
+        trimmed_messages = []
+        for i, msg in enumerate(current_messages):
+            if isinstance(msg.get("content"), list):
+                new_content = []
+                for block in msg["content"]:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        if i < len(current_messages) - 1 and len(str(block.get("content", ""))) > 500:
+                            new_content.append({**block, "content": str(block.get("content",""))[:300] + "... [gekürzt]"})
                         else:
                             new_content.append(block)
-                    trimmed_messages.append({**msg, "content": new_content})
-                else:
-                    trimmed_messages.append(msg)
+                    else:
+                        new_content.append(block)
+                trimmed_messages.append({**msg, "content": new_content})
+            else:
+                trimmed_messages.append(msg)
 
-            response = client.messages.create(
-                model=model,
-                max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                tools=HA_TOOLS,
-                messages=trimmed_messages
-            )
-        except Exception as e:
-            log.error(f"Anthropic API Fehler: {e}")
-            return jsonify({"error": f"Claude API Fehler: {str(e)}"}), 500
-
-        log.info(f"Iteration {iteration+1}: stop_reason={response.stop_reason}, content_blocks={len(response.content)}")
+        response = client.messages.create(
+            model=model,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            tools=HA_TOOLS,
+            messages=trimmed_messages
+        )
 
         if response.stop_reason == "tool_use":
-            # Assistent-Nachricht – safe serialisiert
             assistant_content = []
             for block in response.content:
                 try:
@@ -915,28 +894,19 @@ def chat():
                     pass
             current_messages.append({"role": "assistant", "content": assistant_content})
 
-            # Tool-Calls ausführen
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    log.info(f"Tool-Call: {block.name}")
                     result = execute_tool(block.name, block.input)
                     tool_calls_log.append({"tool": block.name})
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result
-                    })
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
             current_messages.append({"role": "user", "content": tool_results})
-
         else:
-            # Finale Antwort
             text = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     text += block.text
 
-            # History sicher serialisieren für nächste Runde
             safe_messages = []
             for msg in current_messages:
                 try:
@@ -946,12 +916,53 @@ def chat():
             safe_messages.append({"role": "assistant", "content": text})
 
             try:
-                return jsonify({"response": text, "messages": safe_messages, "tool_calls": tool_calls_log})
+                return {"response": text, "messages": safe_messages, "tool_calls": tool_calls_log}
             except Exception as e:
-                log.error(f"Serialisierungsfehler: {e}")
-                return jsonify({"response": text, "messages": [], "tool_calls": []})
+                return {"response": text, "messages": [], "tool_calls": []}
 
-    return jsonify({"error": "Maximale Iterations-Anzahl erreicht."})
+    return {"error": "Maximale Iterations-Anzahl erreicht."}
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    data = request.get_json(force=True)
+    messages = data.get("messages", [])
+    provider = data.get("provider") or DEFAULT_PROVIDER
+    api_key = data.get("api_key") or DEFAULT_API_KEY
+    opencode_url = data.get("opencode_url") or DEFAULT_OPENCODE_URL
+    model = data.get("model", DEFAULT_MODEL)
+
+    log.info(f"Chat-Request: {len(messages)} Nachrichten, provider={provider}")
+
+    if not messages:
+        return jsonify({"error": "Keine Nachricht übergeben."}), 400
+
+    if provider == "opencode" and not opencode_url:
+        return jsonify({"error": "Keine OpenCode URL konfiguriert."}), 400
+    if provider == "anthropic" and not api_key:
+        return jsonify({"error": "Kein Anthropic API-Key konfiguriert."}), 400
+
+    # Async Job starten
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "pending"}
+    t = threading.Thread(target=run_chat_job, args=(job_id, messages, provider, api_key, model, opencode_url), daemon=True)
+    t.start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/chat/poll/<job_id>", methods=["GET"])
+def chat_poll(job_id):
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job nicht gefunden"}), 404
+    if job["status"] == "pending":
+        return jsonify({"status": "pending"})
+    # Job done - cleanup
+    result = job["result"]
+    del _jobs[job_id]
+    if job["status"] == "error":
+        return jsonify({"status": "error", **result})
+    return jsonify({"status": "done", **result})
 
 
 @app.route("/api/status", methods=["GET"])

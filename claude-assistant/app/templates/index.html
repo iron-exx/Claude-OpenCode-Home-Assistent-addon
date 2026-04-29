@@ -314,29 +314,64 @@ async function sendMessage() {
   messageHistory.push({role:'user', content:text});
   addTyping();
   const settings = getSettings();
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180000); // 3 Minuten
+    // Schritt 1: Job starten
     const res = await fetch(BASE + '/api/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({messages:messageHistory, ...settings}),
-      signal: controller.signal
+      body: JSON.stringify({messages:messageHistory, ...settings})
     });
-    clearTimeout(timeout);
-    document.getElementById('typing-msg')?.remove();
-    const data = await res.json();
-    if(data.error) {
-      addMessage('assistant', '❌ ' + data.error);
-    } else {
-      addMessage('assistant', data.response, data.tool_calls, settings.provider);
-      messageHistory = data.messages || messageHistory;
-      if(!data.messages) messageHistory.push({role:'assistant', content:data.response});
+    const startData = await res.json();
+    if(startData.error) {
+      document.getElementById('typing-msg')?.remove();
+      addMessage('assistant', '❌ ' + startData.error);
+      return;
     }
+
+    // Schritt 2: Polling bis Antwort fertig
+    const jobId = startData.job_id;
+    let dots = 0;
+    const pollInterval = setInterval(async () => {
+      dots++;
+      const typingEl = document.getElementById('typing-msg');
+      if(typingEl) {
+        const d = '.'.repeat((dots % 3) + 1);
+        const p = settings.provider === 'opencode' ? '🥒 OpenCode denkt nach' : '🤖 Claude denkt nach';
+        typingEl.querySelector('.bubble').innerHTML = `<div style="color:var(--text-muted);font-size:13px">${p}${d}</div>`;
+      }
+    }, 800);
+
+    let result = null;
+    const maxWait = 300; // 5 Minuten max
+    for(let i = 0; i < maxWait; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const pollRes = await fetch(BASE + '/api/chat/poll/' + jobId);
+        const pollData = await pollRes.json();
+        if(pollData.status === 'done' || pollData.status === 'error') {
+          result = pollData;
+          break;
+        }
+      } catch(e) { /* retry */ }
+    }
+
+    clearInterval(pollInterval);
+    document.getElementById('typing-msg')?.remove();
+
+    if(!result) {
+      addMessage('assistant', '⏱ Zeitüberschreitung – Bitte nochmal versuchen.');
+    } else if(result.status === 'error') {
+      addMessage('assistant', '❌ ' + result.error);
+    } else {
+      addMessage('assistant', result.response, result.tool_calls, settings.provider);
+      messageHistory = result.messages || messageHistory;
+      if(!result.messages) messageHistory.push({role:'assistant', content:result.response});
+    }
+
   } catch(err) {
     document.getElementById('typing-msg')?.remove();
-    const msg = err.name==='AbortError' ? '⏱ Zeitüberschreitung – OpenCode braucht zu lange. Bitte nochmal versuchen.' : '❌ Netzwerkfehler: ' + err.message;
-    addMessage('assistant', msg);
+    addMessage('assistant', '❌ Netzwerkfehler: ' + err.message);
   } finally {
     isLoading = false;
     document.getElementById('send-btn').disabled = false;

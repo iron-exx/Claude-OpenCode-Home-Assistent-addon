@@ -134,10 +134,12 @@ def run_chat_job(job_id: str, messages: list, provider: str, api_key: str, model
             result = chat_with_opencode(messages, opencode_url)
         else:
             result = chat_with_anthropic(messages, api_key, model)
-        # Session speichern
-        if session_id and result.get("messages"):
-            title = make_title(result["messages"])
-            session_save(session_id, title, result["messages"], provider)
+        # Session speichern mit vollständigen Messages
+        if session_id:
+            msgs = result.get("messages", [])
+            title = make_title(msgs) if msgs else "Chat"
+            session_save(session_id, title, msgs, provider)
+            log.info(f"Session {session_id} gespeichert: {len(msgs)} messages, title='{title}'")
         _jobs[job_id] = {"status": "done", "result": {**result, "session_id": session_id}}
     except Exception as e:
         log.error(f"Job {job_id} failed: {e}", exc_info=True)
@@ -1131,7 +1133,7 @@ def get_sessions():
     return jsonify(session_list())
 
 
-@app.route("/api/sessions/init", methods=["POST"])
+@app.route("/api/session/init", methods=["POST"])
 def init_session():
     """Session sofort anlegen bevor AI antwortet."""
     data = request.get_json(force=True)
@@ -1616,18 +1618,19 @@ async function sendMessage() {
   input.value=''; input.style.height='auto';
   addMessage('user', text);
   messageHistory.push({role:'user',content:text});
-  const settings = getSettings();
-  // Session sofort anlegen beim ersten Senden
+  // Session-ID sicherstellen
   if(!currentSessionId) {
     currentSessionId = crypto.randomUUID();
     localStorage.setItem('last_session_id', currentSessionId);
   }
-  // Sidebar sofort aktualisieren mit Platzhalter
-  fetch(BASE + '/api/sessions/init', {
+  const settings = getSettings();
+  settings.session_id = currentSessionId;
+  // Session sofort in Sidebar zeigen
+  fetch(BASE + '/api/session/init', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({session_id: currentSessionId, title: text.substring(0,50), provider: settings.provider})
-  }).then(() => loadSessions());
+  }).then(() => loadSessions()).catch(()=>{});
   const typingEl = addTyping(settings.provider);
   let dots=0;
   const dotTimer = setInterval(()=>{

@@ -434,18 +434,19 @@ async function sendMessage() {
   input.value=''; input.style.height='auto';
   addMessage('user', text);
   messageHistory.push({role:'user',content:text});
-  const settings = getSettings();
-  // Session sofort anlegen beim ersten Senden
+  // Session-ID sicherstellen
   if(!currentSessionId) {
     currentSessionId = crypto.randomUUID();
     localStorage.setItem('last_session_id', currentSessionId);
   }
-  // Sidebar sofort aktualisieren mit Platzhalter
-  fetch(BASE + '/api/sessions/init', {
+  const settings = getSettings();
+  settings.session_id = currentSessionId;
+  // Session sofort in Sidebar zeigen
+  fetch(BASE + '/api/session/init', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({session_id: currentSessionId, title: text.substring(0,50), provider: settings.provider})
-  }).then(() => loadSessions());
+  }).then(() => loadSessions()).catch(()=>{});
   const typingEl = addTyping(settings.provider);
   let dots=0;
   const dotTimer = setInterval(()=>{

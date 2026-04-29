@@ -616,6 +616,8 @@ SYSTEM_PROMPT = """Du bist ein Home Assistant KI-Assistent mit vollem Zugriff. A
 # ─── OpenCode Provider ────────────────────────────────────────────────────────
 def chat_with_opencode(messages: list, opencode_url: str) -> dict:
     """Chat via OpenCode local server API"""
+    if not opencode_url.startswith("http"):
+        opencode_url = "http://" + opencode_url
     base = opencode_url.rstrip("/")
     
     # 1. Neue Session erstellen

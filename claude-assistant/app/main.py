@@ -1041,6 +1041,18 @@ def get_sessions():
     return jsonify(session_list())
 
 
+@app.route("/api/sessions/init", methods=["POST"])
+def init_session():
+    """Session sofort anlegen bevor AI antwortet."""
+    data = request.get_json(force=True)
+    session_id = data.get("session_id")
+    title = data.get("title", "Chat")
+    provider = data.get("provider", "anthropic")
+    if session_id:
+        session_save(session_id, title + "…", [], provider)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/sessions/<session_id>", methods=["GET"])
 def get_session(session_id):
     s = session_load(session_id)

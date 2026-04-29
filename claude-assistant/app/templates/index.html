@@ -435,6 +435,17 @@ async function sendMessage() {
   addMessage('user', text);
   messageHistory.push({role:'user',content:text});
   const settings = getSettings();
+  // Session sofort anlegen beim ersten Senden
+  if(!currentSessionId) {
+    currentSessionId = crypto.randomUUID();
+    localStorage.setItem('last_session_id', currentSessionId);
+  }
+  // Sidebar sofort aktualisieren mit Platzhalter
+  fetch(BASE + '/api/sessions/init', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: currentSessionId, title: text.substring(0,50), provider: settings.provider})
+  }).then(() => loadSessions());
   const typingEl = addTyping(settings.provider);
   let dots=0;
   const dotTimer = setInterval(()=>{

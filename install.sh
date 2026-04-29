@@ -1142,6 +1142,18 @@ def get_sessions():
     return jsonify(session_list())
 
 
+@app.route("/api/sessions/init", methods=["POST"])
+def init_session():
+    """Session sofort anlegen bevor AI antwortet."""
+    data = request.get_json(force=True)
+    session_id = data.get("session_id")
+    title = data.get("title", "Chat")
+    provider = data.get("provider", "anthropic")
+    if session_id:
+        session_save(session_id, title + "…", [], provider)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/sessions/<session_id>", methods=["GET"])
 def get_session(session_id):
     s = session_load(session_id)
@@ -1616,6 +1628,17 @@ async function sendMessage() {
   addMessage('user', text);
   messageHistory.push({role:'user',content:text});
   const settings = getSettings();
+  // Session sofort anlegen beim ersten Senden
+  if(!currentSessionId) {
+    currentSessionId = crypto.randomUUID();
+    localStorage.setItem('last_session_id', currentSessionId);
+  }
+  // Sidebar sofort aktualisieren mit Platzhalter
+  fetch(BASE + '/api/sessions/init', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: currentSessionId, title: text.substring(0,50), provider: settings.provider})
+  }).then(() => loadSessions());
   const typingEl = addTyping(settings.provider);
   let dots=0;
   const dotTimer = setInterval(()=>{

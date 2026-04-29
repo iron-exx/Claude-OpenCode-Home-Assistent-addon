@@ -64,7 +64,7 @@ def session_list():
                     "title": s.get("title", "Chat"),
                     "provider": s.get("provider", "anthropic"),
                     "updated_at": s.get("updated_at", ""),
-                    "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
+                    "message_count": len([m for m in s.get("messages", []) if m.get("role") in ("user","assistant") and isinstance(m.get("content"), str) and m.get("content")])
                 })
             except Exception as e:
                 log.warning(f"Could not load session {f}: {e}")

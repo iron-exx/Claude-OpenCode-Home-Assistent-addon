@@ -165,7 +165,7 @@ def session_list():
                     "title": s.get("title", "Chat"),
                     "provider": s.get("provider", "anthropic"),
                     "updated_at": s.get("updated_at", ""),
-                    "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
+                    "message_count": len([m for m in s.get("messages", []) if m.get("role") in ("user","assistant") and isinstance(m.get("content"), str) and m.get("content")])
                 })
             except Exception as e:
                 log.warning(f"Could not load session {f}: {e}")
@@ -1438,27 +1438,43 @@ async function loadSessions() {
 
 function renderSessions(sessions) {
   const list = document.getElementById('sessions-list');
+  list.innerHTML = '';
   if(!sessions.length) {
     list.innerHTML = '<div class="sidebar-empty">Noch keine gespeicherten Chats</div>';
     return;
   }
-  list.innerHTML = sessions.map(s => `
-    <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" onclick="openSession('${s.id}')">
-      <div class="session-title">${escHtml(s.title)}</div>
+  sessions.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
+    div.dataset.id = s.id;
+    div.innerHTML = `
+      <div class="session-title">${escHtml(s.title || 'Chat')}</div>
       <div class="session-meta">
-        <span class="session-date">${s.updated_at} · ${s.message_count} Fragen</span>
-        <span class="session-provider ${s.provider}">${s.provider === 'opencode' ? '🥒' : '🤖'}</span>
-        <button class="session-delete" onclick="deleteSession(event,'${s.id}')" title="Löschen">✕</button>
-      </div>
-    </div>
-  `).join('');
+        <span class="session-date">${s.updated_at || ''} · ${s.message_count || 0} Nachrichten</span>
+        <span class="session-provider ${s.provider || 'anthropic'}">${(s.provider==='opencode') ? '🥒' : '🤖'}</span>
+      </div>`;
+    // Delete button
+    const del = document.createElement('button');
+    del.className = 'session-delete';
+    del.textContent = '✕';
+    del.title = 'Löschen';
+    del.addEventListener('click', e => { e.stopPropagation(); deleteSession(s.id); });
+    div.querySelector('.session-meta').appendChild(del);
+    // Open on click
+    div.addEventListener('click', () => openSession(s.id));
+    list.appendChild(div);
+  });
 }
 
 async function openSession(id) {
+  if(!id) return;
+  // Settings schließen
+  document.getElementById('settings-panel').classList.remove('open');
   try {
     const r = await fetch(BASE + '/api/sessions/' + id);
+    if(!r.ok) { console.error('Session not found:', id); return; }
     const s = await r.json();
-    if(s.error) return;
+    if(!s || s.error) return;
 
     currentSessionId = id;
     localStorage.setItem('last_session_id', id);
@@ -1485,11 +1501,10 @@ async function openSession(id) {
   } catch(e) { console.error(e); }
 }
 
-async function deleteSession(e, id) {
-  e.stopPropagation();
+async function deleteSession(id) {
   await fetch(BASE + '/api/sessions/' + id, {method:'DELETE'});
   if(currentSessionId === id) newChat();
-  loadSessions();
+  else loadSessions();
 }
 
 function newChat() {

@@ -663,12 +663,30 @@ def chat():
 
     for iteration in range(MAX_ITERATIONS):
         try:
+            # Tool-Ergebnisse in älteren Nachrichten kürzen um Tokens zu sparen
+            trimmed_messages = []
+            for i, msg in enumerate(current_messages):
+                if isinstance(msg.get("content"), list):
+                    new_content = []
+                    for block in msg["content"]:
+                        if isinstance(block, dict) and block.get("type") == "tool_result":
+                            # Nur in älteren Nachrichten kürzen (nicht die letzte)
+                            if i < len(current_messages) - 1 and len(str(block.get("content", ""))) > 500:
+                                new_content.append({**block, "content": str(block.get("content",""))[:300] + "... [gekürzt]"})
+                            else:
+                                new_content.append(block)
+                        else:
+                            new_content.append(block)
+                    trimmed_messages.append({**msg, "content": new_content})
+                else:
+                    trimmed_messages.append(msg)
+
             response = client.messages.create(
                 model=model,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=HA_TOOLS,
-                messages=current_messages
+                messages=trimmed_messages
             )
         except Exception as e:
             log.error(f"Anthropic API Fehler: {e}")

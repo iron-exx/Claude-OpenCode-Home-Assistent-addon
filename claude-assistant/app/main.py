@@ -50,23 +50,26 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 def session_list():
     sessions = []
     try:
-        for f in sorted(os.listdir(SESSIONS_DIR), reverse=True):
-            if f.endswith(".json"):
-                path = os.path.join(SESSIONS_DIR, f)
-                try:
-                    with open(path, "r", encoding="utf-8") as fh:
-                        s = json.load(fh)
-                    sessions.append({
-                        "id": s["id"],
-                        "title": s.get("title", "Chat"),
-                        "provider": s.get("provider", "anthropic"),
-                        "updated_at": s.get("updated_at", ""),
-                        "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
-                    })
-                except Exception:
-                    pass
-    except Exception:
-        pass
+        for f in os.listdir(SESSIONS_DIR):
+            if not f.endswith(".json"):
+                continue
+            path = os.path.join(SESSIONS_DIR, f)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    s = json.load(fh)
+                sessions.append({
+                    "id": s["id"],
+                    "title": s.get("title", "Chat"),
+                    "provider": s.get("provider", "anthropic"),
+                    "updated_at": s.get("updated_at", ""),
+                    "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
+                })
+            except Exception as e:
+                log.warning(f"Could not load session {f}: {e}")
+    except Exception as e:
+        log.error(f"session_list error: {e}")
+    # Neueste zuerst
+    sessions.sort(key=lambda x: x.get("updated_at",""), reverse=True)
     return sessions
 
 

@@ -151,23 +151,26 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 def session_list():
     sessions = []
     try:
-        for f in sorted(os.listdir(SESSIONS_DIR), reverse=True):
-            if f.endswith(".json"):
-                path = os.path.join(SESSIONS_DIR, f)
-                try:
-                    with open(path, "r", encoding="utf-8") as fh:
-                        s = json.load(fh)
-                    sessions.append({
-                        "id": s["id"],
-                        "title": s.get("title", "Chat"),
-                        "provider": s.get("provider", "anthropic"),
-                        "updated_at": s.get("updated_at", ""),
-                        "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
-                    })
-                except Exception:
-                    pass
-    except Exception:
-        pass
+        for f in os.listdir(SESSIONS_DIR):
+            if not f.endswith(".json"):
+                continue
+            path = os.path.join(SESSIONS_DIR, f)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    s = json.load(fh)
+                sessions.append({
+                    "id": s["id"],
+                    "title": s.get("title", "Chat"),
+                    "provider": s.get("provider", "anthropic"),
+                    "updated_at": s.get("updated_at", ""),
+                    "message_count": len([m for m in s.get("messages", []) if m.get("role") == "user"])
+                })
+            except Exception as e:
+                log.warning(f"Could not load session {f}: {e}")
+    except Exception as e:
+        log.error(f"session_list error: {e}")
+    # Neueste zuerst
+    sessions.sort(key=lambda x: x.get("updated_at",""), reverse=True)
     return sessions
 
 
@@ -1229,9 +1232,9 @@ cat > "$BASE/app/templates/index.html" << 'CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML'
     #main { flex:1; display:flex; overflow:hidden; }
 
     /* ── Sessions Sidebar ── */
-    #sidebar { width:240px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; transition:width .2s; }
-    #sidebar.collapsed { width:0; overflow:hidden; }
-    .sidebar-header { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+    #sidebar { width:240px; min-width:240px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; transition:all .25s; overflow:hidden; }
+    #sidebar.collapsed { width:0; min-width:0; }
+    .sidebar-header { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; white-space:nowrap; overflow:hidden; }
     .sidebar-header span { font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
     #new-chat-btn { background:var(--accent); border:none; color:white; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; transition:background .15s; }
     #new-chat-btn:hover { background:var(--accent2); }
@@ -1303,7 +1306,7 @@ cat > "$BASE/app/templates/index.html" << 'CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML'
   <div class="header-icon anthropic" id="header-icon">🤖</div>
   <h1>Claude AI Assistant <span id="provider-label">Anthropic Claude</span></h1>
   <div id="ha-status"><div class="status-dot" id="status-dot"></div><span id="status-text">Verbinde...</span></div>
-  <button class="hdr-btn" onclick="toggleSidebar()" title="Sessions">📋</button>
+  <button class="hdr-btn" id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Verlauf ein-/ausblenden" style="font-size:13px;min-width:28px">◀</button>
   <button class="hdr-btn" onclick="toggleSettings()">⚙ Einstellungen</button>
 </header>
 
@@ -1394,6 +1397,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   checkStatus();
   loadSessions();
+  // Sidebar-Zustand wiederherstellen
+  if(localStorage.getItem('sidebar_collapsed') === '1') {
+    document.getElementById('sidebar').classList.add('collapsed');
+    document.getElementById('sidebar-toggle-btn').textContent = '▶';
+  }
   const ta = document.getElementById('user-input');
   ta.addEventListener('input', () => { ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,150)+'px'; });
   ta.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} });
@@ -1403,15 +1411,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('collapsed');
+  localStorage.setItem('sidebar_collapsed', sb.classList.contains('collapsed') ? '1' : '0');
+  document.getElementById('sidebar-toggle-btn').textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
 }
 
 async function loadSessions() {
   try {
     const r = await fetch(BASE + '/api/sessions');
+    if(!r.ok) return;
     const sessions = await r.json();
-    renderSessions(sessions);
-  } catch(e) {}
+    renderSessions(Array.isArray(sessions) ? sessions : []);
+  } catch(e) {
+    console.error('loadSessions error:', e);
+  }
 }
 
 function renderSessions(sessions) {

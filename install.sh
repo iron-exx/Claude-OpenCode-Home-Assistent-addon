@@ -79,9 +79,8 @@ CLAUDE_EOF_RUN_SH
 
 cat > "$BASE/app/requirements.txt" << 'CLAUDE_EOF_APP_REQUIREMENTS_TXT'
 flask==3.0.3
-anthropic==0.28.0
+anthropic>=0.49.0
 requests==2.32.3
-gunicorn==22.0.0
 
 CLAUDE_EOF_APP_REQUIREMENTS_TXT
 

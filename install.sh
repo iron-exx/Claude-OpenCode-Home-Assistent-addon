@@ -883,690 +883,332 @@ cat > "$BASE/app/templates/index.html" << 'CLAUDE_EOF_APP_TEMPLATES_INDEX_HTML'
   <title>Claude AI – Home Assistant</title>
   <style>
     :root {
-      --bg:        #111318;
-      --surface:   #1c1f2b;
-      --surface2:  #252836;
-      --border:    #2e3347;
-      --accent:    #5865f2;
-      --accent2:   #7c8cf8;
-      --claude:    #d97757;
-      --text:      #e8eaf0;
-      --text-muted:#8b90a8;
-      --green:     #4ade80;
-      --red:       #f87171;
-      --yellow:    #fbbf24;
-      --radius:    12px;
+      --bg: #111318; --surface: #1c1f2b; --surface2: #252836;
+      --border: #2e3347; --accent: #5865f2; --accent2: #7c8cf8;
+      --claude: #d97757; --opencode: #22c55e;
+      --text: #e8eaf0; --text-muted: #8b90a8;
+      --green: #4ade80; --red: #f87171; --radius: 12px;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* ── Header ─────────────────────────────────────────────── */
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 0 16px;
-      height: 54px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-      z-index: 10;
-    }
-
-    .header-icon {
-      width: 32px;
-      height: 32px;
-      background: linear-gradient(135deg, var(--claude) 0%, #e8925a 100%);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      flex-shrink: 0;
-    }
-
-    header h1 {
-      font-size: 15px;
-      font-weight: 600;
-      flex: 1;
-    }
-
-    header h1 span {
-      display: block;
-      font-size: 11px;
-      font-weight: 400;
-      color: var(--text-muted);
-    }
-
-    #ha-status {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .status-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--text-muted);
-    }
-    .status-dot.ok    { background: var(--green); }
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; height: 54px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .header-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; transition: background .3s; }
+    .header-icon.anthropic { background: linear-gradient(135deg, var(--claude), #e8925a); }
+    .header-icon.opencode  { background: linear-gradient(135deg, #16a34a, #22c55e); }
+    header h1 { font-size: 15px; font-weight: 600; flex: 1; }
+    header h1 span { display: block; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+    #ha-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+    .status-dot.ok { background: var(--green); }
     .status-dot.error { background: var(--red); }
-
-    #settings-btn {
-      background: none;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      border-radius: 8px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all .15s;
-    }
+    #settings-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: all .15s; }
     #settings-btn:hover { border-color: var(--accent); color: var(--text); }
 
-    /* ── Settings Panel ─────────────────────────────────────── */
-    #settings-panel {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 16px;
-      display: none;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
+    /* Settings Panel */
+    #settings-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px; display: none; flex-direction: column; gap: 14px; }
     #settings-panel.open { display: flex; }
 
-    .setting-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px; }
-    .setting-group label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
-    .setting-group input,
-    .setting-group select {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 7px 10px;
-      font-size: 13px;
-      outline: none;
-      transition: border-color .15s;
-    }
-    .setting-group input:focus,
-    .setting-group select:focus { border-color: var(--accent); }
+    .provider-tabs { display: flex; gap: 8px; }
+    .provider-tab { flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--border); cursor: pointer; text-align: center; transition: all .2s; background: var(--surface2); }
+    .provider-tab .tab-icon { font-size: 20px; margin-bottom: 4px; }
+    .provider-tab .tab-name { font-size: 13px; font-weight: 600; }
+    .provider-tab .tab-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .provider-tab.active.anthropic { border-color: var(--claude); background: rgba(217,119,87,.1); }
+    .provider-tab.active.opencode  { border-color: var(--opencode); background: rgba(34,197,94,.1); }
 
-    /* ── Messages ───────────────────────────────────────────── */
-    #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      scroll-behavior: smooth;
-    }
+    .provider-fields { display: none; flex-direction: column; gap: 10px; padding: 12px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border); }
+    .provider-fields.active { display: flex; }
 
+    .field-row { display: flex; flex-direction: column; gap: 4px; }
+    .field-row label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .field-row input, .field-row select {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); padding: 8px 10px; font-size: 13px; outline: none; transition: border-color .15s;
+    }
+    .field-row input:focus, .field-row select:focus { border-color: var(--accent); }
+    .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .field-hint a { color: var(--accent2); text-decoration: none; }
+
+    /* Messages */
+    #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }
     #messages::-webkit-scrollbar { width: 4px; }
-    #messages::-webkit-scrollbar-track { background: transparent; }
     #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-    .message {
-      display: flex;
-      gap: 10px;
-      max-width: 780px;
-      animation: fadein .25s ease;
-    }
+    .message { display: flex; gap: 10px; max-width: 780px; animation: fadein .25s ease; }
     @keyframes fadein { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
-
     .message.user { align-self: flex-end; flex-direction: row-reverse; }
-
-    .avatar {
-      width: 30px; height: 30px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-    .message.assistant .avatar {
-      background: linear-gradient(135deg, var(--claude) 0%, #e8925a 100%);
-    }
-    .message.user .avatar {
-      background: var(--accent);
-    }
-
-    .bubble {
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      line-height: 1.6;
-      max-width: 100%;
-      word-break: break-word;
-    }
-    .message.assistant .bubble {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-top-left-radius: 4px;
-    }
-    .message.user .bubble {
-      background: var(--accent);
-      color: white;
-      border-top-right-radius: 4px;
-    }
-
-    .bubble p { margin-bottom: 8px; }
-    .bubble p:last-child { margin-bottom: 0; }
-    .bubble code {
-      background: rgba(255,255,255,.08);
-      padding: 1px 5px;
-      border-radius: 4px;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      font-size: 12px;
-    }
-    .bubble pre {
-      background: rgba(0,0,0,.3);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      overflow-x: auto;
-      margin: 8px 0;
-      font-size: 12px;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      line-height: 1.5;
-    }
+    .avatar { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+    .message.assistant .avatar { background: linear-gradient(135deg, var(--claude), #e8925a); }
+    .message.assistant.opencode-msg .avatar { background: linear-gradient(135deg, #16a34a, #22c55e); }
+    .message.user .avatar { background: var(--accent); }
+    .bubble { padding: 10px 14px; border-radius: var(--radius); font-size: 14px; line-height: 1.6; max-width: 100%; word-break: break-word; }
+    .message.assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-top-left-radius: 4px; }
+    .message.user .bubble { background: var(--accent); color: white; border-top-right-radius: 4px; }
+    .bubble p { margin-bottom: 8px; } .bubble p:last-child { margin-bottom: 0; }
+    .bubble code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+    .bubble pre { background: rgba(0,0,0,.3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; font-size: 12px; font-family: monospace; line-height: 1.5; }
     .bubble pre code { background: none; padding: 0; }
     .bubble ul, .bubble ol { padding-left: 18px; margin: 6px 0; }
-    .bubble li { margin-bottom: 3px; }
     .bubble strong { color: var(--accent2); }
-
-    /* Tool-Calls Anzeige */
-    .tool-calls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-bottom: 8px;
-    }
-    .tool-badge {
-      background: rgba(88,101,242,.15);
-      border: 1px solid rgba(88,101,242,.3);
-      color: var(--accent2);
-      padding: 2px 8px;
-      border-radius: 20px;
-      font-size: 11px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* Typing indicator */
-    .typing-indicator {
-      display: flex;
-      gap: 4px;
-      padding: 4px 0;
-      align-items: center;
-    }
-    .typing-indicator span {
-      width: 6px; height: 6px;
-      background: var(--text-muted);
-      border-radius: 50%;
-      animation: bounce 1.2s infinite;
-    }
+    .tool-calls { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+    .tool-badge { background: rgba(88,101,242,.15); border: 1px solid rgba(88,101,242,.3); color: var(--accent2); padding: 2px 8px; border-radius: 20px; font-size: 11px; }
+    .typing-indicator { display: flex; gap: 4px; padding: 4px 0; align-items: center; }
+    .typing-indicator span { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.2s infinite; }
     .typing-indicator span:nth-child(2) { animation-delay: .2s; }
     .typing-indicator span:nth-child(3) { animation-delay: .4s; }
     @keyframes bounce { 0%,60%,100%{transform:none} 30%{transform:translateY(-5px)} }
 
-    /* ── Input Area ─────────────────────────────────────────── */
-    #input-area {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      padding: 12px 16px;
-      flex-shrink: 0;
-    }
-
-    #input-wrapper {
-      display: flex;
-      align-items: flex-end;
-      gap: 8px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 8px 8px 8px 14px;
-      transition: border-color .15s;
-    }
+    /* Input */
+    #input-area { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 16px; flex-shrink: 0; }
+    #quick-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip { background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted); padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+    #input-wrapper { display: flex; align-items: flex-end; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 8px 8px 14px; transition: border-color .15s; }
     #input-wrapper:focus-within { border-color: var(--accent); }
-
-    #user-input {
-      flex: 1;
-      background: none;
-      border: none;
-      outline: none;
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.5;
-      resize: none;
-      max-height: 150px;
-      min-height: 24px;
-      font-family: inherit;
-      padding: 2px 0;
-    }
+    #user-input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 14px; line-height: 1.5; resize: none; max-height: 150px; min-height: 24px; font-family: inherit; padding: 2px 0; }
     #user-input::placeholder { color: var(--text-muted); }
-
-    #send-btn {
-      width: 34px; height: 34px;
-      background: var(--accent);
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: all .15s;
-    }
+    #send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s; }
     #send-btn:hover { background: var(--accent2); }
     #send-btn:disabled { background: var(--border); cursor: not-allowed; }
+    .input-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center; }
 
-    .input-hint {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 6px;
-      text-align: center;
-    }
-
-    /* ── Chips / Schnellbefehle ─────────────────────────────── */
-    #quick-actions {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    .chip {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all .15s;
-      white-space: nowrap;
-    }
-    .chip:hover { border-color: var(--accent); color: var(--text); }
-
-    /* ── Welcome ────────────────────────────────────────────── */
-    #welcome {
-      margin: auto;
-      text-align: center;
-      padding: 32px 20px;
-      max-width: 480px;
-    }
-    #welcome .big-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
-    #welcome h2 {
-      font-size: 20px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    #welcome p {
-      font-size: 14px;
-      color: var(--text-muted);
-      line-height: 1.6;
-    }
-
-    /* ── Error Banner ───────────────────────────────────────── */
-    .error-banner {
-      background: rgba(248,113,113,.12);
-      border: 1px solid rgba(248,113,113,.3);
-      color: var(--red);
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      font-size: 13px;
-    }
-
-    /* ── Responsive ─────────────────────────────────────────── */
-    @media (max-width: 600px) {
-      #messages { padding: 10px; }
-      .message { max-width: 100%; }
-    }
+    /* Welcome */
+    #welcome { margin: auto; text-align: center; padding: 32px 20px; max-width: 480px; }
+    #welcome .big-icon { font-size: 48px; margin-bottom: 16px; }
+    #welcome h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    #welcome p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
   </style>
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────────────────── -->
 <header>
-  <div class="header-icon">🤖</div>
-  <h1>
-    Claude AI Assistant
-    <span>Home Assistant Integration</span>
-  </h1>
-  <div id="ha-status">
-    <div class="status-dot" id="status-dot"></div>
-    <span id="status-text">Verbinde...</span>
-  </div>
+  <div class="header-icon anthropic" id="header-icon">🤖</div>
+  <h1>Claude AI Assistant <span id="provider-label">Anthropic Claude</span></h1>
+  <div id="ha-status"><div class="status-dot" id="status-dot"></div><span id="status-text">Verbinde...</span></div>
   <button id="settings-btn" onclick="toggleSettings()">⚙ Einstellungen</button>
 </header>
 
-<!-- ── Settings Panel ──────────────────────────────────────────────────────── -->
 <div id="settings-panel">
-  <div class="setting-group">
-    <label>Anthropic API-Key</label>
-    <input type="password" id="api-key-input" placeholder="sk-ant-..." />
+  <!-- Provider Auswahl -->
+  <div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">KI-Anbieter wählen</div>
+    <div class="provider-tabs">
+      <div class="provider-tab anthropic active" id="tab-anthropic" onclick="selectProvider('anthropic')">
+        <div class="tab-icon">🤖</div>
+        <div class="tab-name">Anthropic Claude</div>
+        <div class="tab-desc">API-Key erforderlich</div>
+      </div>
+      <div class="provider-tab opencode" id="tab-opencode" onclick="selectProvider('opencode')">
+        <div class="tab-icon">🥒</div>
+        <div class="tab-name">OpenCode Big Pickle</div>
+        <div class="tab-desc">Kostenlos · Lokal</div>
+      </div>
+    </div>
   </div>
-  <div class="setting-group">
-    <label>Modell (Anthropic)</label>
-    <select id="model-select">
-      <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Schnell)</option>
-      <option value="claude-opus-4-5">Claude Opus 4.5 (Leistungsstark)</option>
-      <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Günstig)</option>
-    </select>
+
+  <!-- Anthropic Felder -->
+  <div class="provider-fields active" id="fields-anthropic">
+    <div class="field-row">
+      <label>Anthropic API-Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." />
+      <div class="field-hint">Erhältlich unter <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></div>
+    </div>
+    <div class="field-row">
+      <label>Claude Modell</label>
+      <select id="model-select">
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 – Schnell &amp; günstig ✓</option>
+        <option value="claude-opus-4-5">Claude Opus 4.5 – Leistungsstark</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 – Sehr günstig</option>
+      </select>
+    </div>
   </div>
-  <div class="setting-group">
-    <label>Provider</label>
-    <select id="provider-select" onchange="toggleProviderFields()">
-      <option value="anthropic">Anthropic (Claude)</option>
-      <option value="opencode">OpenCode (Big Pickle – kostenlos)</option>
-    </select>
-  </div>
-  <div class="setting-group" id="opencode-url-group" style="display:none">
-    <label>OpenCode URL</label>
-    <input type="text" id="opencode-url-input" placeholder="http://192.168.1.100:4096" />
+
+  <!-- OpenCode Felder -->
+  <div class="provider-fields" id="fields-opencode">
+    <div class="field-row">
+      <label>OpenCode Server URL</label>
+      <input type="text" id="opencode-url-input" placeholder="192.168.1.100:4096" />
+      <div class="field-hint">
+        Starte OpenCode auf deinem PC: <code>opencode serve --hostname 0.0.0.0 --port 4096</code><br>
+        Modell: <strong>Big Pickle</strong> (kostenlos, wird automatisch verwendet)
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ── Messages ────────────────────────────────────────────────────────────── -->
 <div id="messages">
   <div id="welcome">
     <div class="big-icon">🏠</div>
     <h2>Hallo! Wie kann ich helfen?</h2>
-    <p>Ich habe vollen Zugriff auf dein Home Assistant System und kann Geräte steuern, Automationen erstellen und vieles mehr.</p>
+    <p>Ich habe vollen Zugriff auf dein Home Assistant und kann Geräte steuern, Automationen erstellen und vieles mehr.</p>
   </div>
 </div>
 
-<!-- ── Input ───────────────────────────────────────────────────────────────── -->
 <div id="input-area">
   <div id="quick-actions">
-    <div class="chip" onclick="sendQuick('Was sind die aktuellen Zustände aller Lichter?')">💡 Alle Lichter</div>
+    <div class="chip" onclick="sendQuick('Was sind die aktuellen Zustände aller Lichter?')">💡 Lichter</div>
     <div class="chip" onclick="sendQuick('Welche Automationen habe ich?')">⚡ Automationen</div>
     <div class="chip" onclick="sendQuick('Zeige mir alle Sensoren und ihre Werte')">📊 Sensoren</div>
-    <div class="chip" onclick="sendQuick('Welche Geräte sind gerade eingeschaltet?')">🔌 Ein/Aus Status</div>
-    <div class="chip" onclick="sendQuick('Was kann ich dir alles sagen zu tun?')">❓ Hilfe</div>
+    <div class="chip" onclick="sendQuick('Welche Geräte sind gerade eingeschaltet?')">🔌 Status</div>
   </div>
   <div id="input-wrapper">
-    <textarea
-      id="user-input"
-      placeholder="Schreibe eine Nachricht... (z.B. 'Schalte alle Lichter im Wohnzimmer aus')"
-      rows="1"
-    ></textarea>
-    <button id="send-btn" onclick="sendMessage()" title="Senden (Enter)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-      </svg>
+    <textarea id="user-input" placeholder="Nachricht schreiben... (z.B. 'Schalte alle Lichter aus')" rows="1"></textarea>
+    <button id="send-btn" onclick="sendMessage()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     </button>
   </div>
   <div class="input-hint">Enter = Senden &nbsp;·&nbsp; Shift+Enter = Zeilenumbruch</div>
 </div>
 
 <script>
-// ── State ──────────────────────────────────────────────────────────────────
+const BASE = window.location.pathname.replace(/\/+$/, '');
 let messageHistory = [];
 let isLoading = false;
+let currentProvider = 'anthropic';
 
-// ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   checkStatus();
-  autoResize(document.getElementById('user-input'));
-  document.getElementById('user-input').addEventListener('keydown', handleKey);
+  const ta = document.getElementById('user-input');
+  ta.addEventListener('input', () => { ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,150)+'px'; });
+  ta.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} });
   document.getElementById('api-key-input').addEventListener('change', saveSettings);
   document.getElementById('model-select').addEventListener('change', saveSettings);
   document.getElementById('opencode-url-input').addEventListener('change', saveSettings);
-
-  // Has API key from config?
-  {% if has_api_key %}
-  document.getElementById('api-key-input').placeholder = '(In Add-on Einstellungen konfiguriert)';
-  {% endif %}
 });
 
-// ── Settings ───────────────────────────────────────────────────────────────
+function selectProvider(p) {
+  currentProvider = p;
+  document.getElementById('tab-anthropic').classList.toggle('active', p==='anthropic');
+  document.getElementById('tab-opencode').classList.toggle('active', p==='opencode');
+  document.getElementById('fields-anthropic').classList.toggle('active', p==='anthropic');
+  document.getElementById('fields-opencode').classList.toggle('active', p==='opencode');
+  const icon = document.getElementById('header-icon');
+  icon.className = 'header-icon ' + p;
+  icon.textContent = p==='opencode' ? '🥒' : '🤖';
+  document.getElementById('provider-label').textContent = p==='opencode' ? 'OpenCode · Big Pickle' : 'Anthropic Claude';
+  saveSettings();
+}
+
 function toggleSettings() {
-  const panel = document.getElementById('settings-panel');
-  panel.classList.toggle('open');
+  document.getElementById('settings-panel').classList.toggle('open');
 }
 
 function loadSettings() {
   document.getElementById('api-key-input').value = localStorage.getItem('claude_api_key') || '';
   document.getElementById('model-select').value = localStorage.getItem('claude_model') || 'claude-sonnet-4-6';
-  document.getElementById('provider-select').value = localStorage.getItem('claude_provider') || 'anthropic';
   document.getElementById('opencode-url-input').value = localStorage.getItem('opencode_url') || '';
-  toggleProviderFields();
+  const p = localStorage.getItem('claude_provider') || 'anthropic';
+  selectProvider(p);
 }
 
 function saveSettings() {
   localStorage.setItem('claude_api_key', document.getElementById('api-key-input').value);
   localStorage.setItem('claude_model', document.getElementById('model-select').value);
-  localStorage.setItem('claude_provider', document.getElementById('provider-select').value);
   localStorage.setItem('opencode_url', document.getElementById('opencode-url-input').value);
-}
-
-function toggleProviderFields() {
-  const provider = document.getElementById('provider-select').value;
-  const apiKeyGroup = document.getElementById('api-key-input').closest('.setting-group');
-  const modelGroup = document.getElementById('model-select').closest('.setting-group');
-  const opencodeGroup = document.getElementById('opencode-url-group');
-  if (provider === 'opencode') {
-    apiKeyGroup.style.display = 'none';
-    modelGroup.style.display = 'none';
-    opencodeGroup.style.display = 'flex';
-  } else {
-    apiKeyGroup.style.display = 'flex';
-    modelGroup.style.display = 'flex';
-    opencodeGroup.style.display = 'none';
-  }
-  saveSettings();
+  localStorage.setItem('claude_provider', currentProvider);
 }
 
 function getSettings() {
   return {
-    provider: document.getElementById('provider-select').value,
+    provider: currentProvider,
     api_key: document.getElementById('api-key-input').value || undefined,
     model: document.getElementById('model-select').value,
     opencode_url: document.getElementById('opencode-url-input').value || undefined,
   };
 }
 
-// ── Base URL für HA Ingress ────────────────────────────────────────────────
-// HA Ingress serviert unter /api/hassio_ingress/TOKEN/ – relative URLs nötig
-const BASE = window.location.pathname.replace(/\/+$/, '');
-
-// ── HA Status ──────────────────────────────────────────────────────────────
 async function checkStatus() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
   try {
     const r = await fetch(BASE + '/api/status');
     const d = await r.json();
-    if (d.ha_connected) {
-      dot.className = 'status-dot ok';
-      txt.textContent = `HA ${d.ha_version} · ${d.location}`;
-    } else {
-      dot.className = 'status-dot error';
-      txt.textContent = 'HA nicht erreichbar';
-    }
-  } catch {
-    dot.className = 'status-dot error';
-    txt.textContent = 'Verbindungsfehler';
-  }
+    dot.className = 'status-dot ' + (d.ha_connected ? 'ok' : 'error');
+    txt.textContent = d.ha_connected ? `HA ${d.ha_version} · ${d.location}` : 'HA nicht erreichbar';
+  } catch { dot.className='status-dot error'; txt.textContent='Verbindungsfehler'; }
 }
 
-// ── Textarea Auto-resize ───────────────────────────────────────────────────
-function autoResize(el) {
-  el.addEventListener('input', () => {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-  });
-}
-
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-}
-
-// ── Quick Actions ──────────────────────────────────────────────────────────
-function sendQuick(text) {
-  document.getElementById('user-input').value = text;
-  sendMessage();
-}
-
-// ── Message Rendering ──────────────────────────────────────────────────────
 function renderMarkdown(text) {
   return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-      `<pre><code>${code.trim()}</code></pre>`)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^#{1,3} (.+)$/gm, '<strong>$1</strong>')
-    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
-    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^(?!<[uop]|<li)(.+)$/gm, (m) => m.startsWith('<') ? m : `<p>${m}</p>`);
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n?([\s\S]*?)```/g,(_,l,c)=>`<pre><code>${c.trim()}</code></pre>`)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/^#{1,3} (.+)$/gm,'<strong>$1</strong>')
+    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g,m=>`<ul>${m}</ul>`)
+    .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
 }
 
-function addMessage(role, content, toolCalls) {
-  const msgs = document.getElementById('messages');
-  const welcome = document.getElementById('welcome');
-  if (welcome) welcome.remove();
-
+function addMessage(role, content, toolCalls, provider) {
+  document.getElementById('welcome')?.remove();
   const wrap = document.createElement('div');
-  wrap.className = `message ${role}`;
-
+  wrap.className = `message ${role}` + (provider==='opencode'?' opencode-msg':'');
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
-  avatar.textContent = role === 'user' ? '👤' : '🤖';
-
+  avatar.textContent = role==='user' ? '👤' : (provider==='opencode'?'🥒':'🤖');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-
-  if (toolCalls && toolCalls.length > 0) {
+  if(toolCalls?.length) {
     const badges = document.createElement('div');
     badges.className = 'tool-calls';
-    toolCalls.forEach(tc => {
-      const badge = document.createElement('span');
-      badge.className = 'tool-badge';
-      badge.textContent = `⚡ ${tc.tool}`;
-      badges.appendChild(badge);
-    });
+    toolCalls.forEach(tc => { const b=document.createElement('span'); b.className='tool-badge'; b.textContent='⚡ '+tc.tool; badges.appendChild(b); });
     bubble.appendChild(badges);
   }
-
-  const text = document.createElement('div');
-  text.innerHTML = renderMarkdown(content);
-  bubble.appendChild(text);
-
-  wrap.appendChild(avatar);
-  wrap.appendChild(bubble);
-  msgs.appendChild(wrap);
-  msgs.scrollTop = msgs.scrollHeight;
-  return wrap;
+  const txt = document.createElement('div');
+  txt.innerHTML = renderMarkdown(content);
+  bubble.appendChild(txt);
+  wrap.appendChild(avatar); wrap.appendChild(bubble);
+  document.getElementById('messages').appendChild(wrap);
+  document.getElementById('messages').scrollTop = 99999;
 }
 
 function addTyping() {
-  const msgs = document.getElementById('messages');
+  document.getElementById('welcome')?.remove();
   const wrap = document.createElement('div');
-  wrap.className = 'message assistant';
-  wrap.id = 'typing-msg';
-
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  avatar.textContent = '🤖';
-
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div>`;
-
-  wrap.appendChild(avatar);
-  wrap.appendChild(bubble);
-  msgs.appendChild(wrap);
-  msgs.scrollTop = msgs.scrollHeight;
-  return wrap;
+  wrap.className = 'message assistant'; wrap.id = 'typing-msg';
+  const avatar = document.createElement('div'); avatar.className='avatar'; avatar.textContent='⏳';
+  const bubble = document.createElement('div'); bubble.className='bubble';
+  bubble.innerHTML='<div class="typing-indicator"><span></span><span></span><span></span></div>';
+  wrap.appendChild(avatar); wrap.appendChild(bubble);
+  document.getElementById('messages').appendChild(wrap);
+  document.getElementById('messages').scrollTop = 99999;
 }
 
-function removeTyping() {
-  const el = document.getElementById('typing-msg');
-  if (el) el.remove();
-}
+function sendQuick(text) { document.getElementById('user-input').value=text; sendMessage(); }
 
-// ── Send Message ──────────────────────────────────────────────────────────
 async function sendMessage() {
   const input = document.getElementById('user-input');
   const text = input.value.trim();
-  if (!text || isLoading) return;
-
+  if(!text || isLoading) return;
   isLoading = true;
   document.getElementById('send-btn').disabled = true;
-  input.value = '';
-  input.style.height = 'auto';
-
-  // Add user message to UI
+  input.value = ''; input.style.height = 'auto';
   addMessage('user', text);
-  messageHistory.push({ role: 'user', content: text });
-
-  // Add typing indicator
+  messageHistory.push({role:'user', content:text});
   addTyping();
-
   const settings = getSettings();
-
   try {
     const res = await fetch(BASE + '/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: messageHistory,
-        provider: settings.provider,
-        api_key: settings.api_key,
-        model: settings.model,
-        opencode_url: settings.opencode_url
-      })
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({messages:messageHistory, ...settings})
     });
-
-    removeTyping();
+    document.getElementById('typing-msg')?.remove();
     const data = await res.json();
-
-    if (data.error) {
-      addMessage('assistant', `❌ Fehler: ${data.error}`);
+    if(data.error) {
+      addMessage('assistant', '❌ ' + data.error);
     } else {
-      addMessage('assistant', data.response, data.tool_calls);
-      // Update history with full exchange (including tool calls)
-      // Replace last user message with full updated history from server
+      addMessage('assistant', data.response, data.tool_calls, settings.provider);
       messageHistory = data.messages || messageHistory;
-      // Add assistant response to local history
-      if (!data.messages) {
-        messageHistory.push({ role: 'assistant', content: data.response });
-      }
+      if(!data.messages) messageHistory.push({role:'assistant', content:data.response});
     }
-
-  } catch (err) {
-    removeTyping();
-    addMessage('assistant', `❌ Netzwerkfehler: ${err.message}`);
+  } catch(err) {
+    document.getElementById('typing-msg')?.remove();
+    addMessage('assistant', '❌ Netzwerkfehler: ' + err.message);
   } finally {
     isLoading = false;
     document.getElementById('send-btn').disabled = false;

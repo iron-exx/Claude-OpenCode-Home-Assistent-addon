@@ -1,24 +1,21 @@
-ARG BUILD_FROM=python:3.11-slim
+ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# jq für Config-Parsing, curl für Health-Checks
+RUN apk add --no-cache jq curl
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements first for layer caching
+# Requirements zuerst (besseres Layer-Caching)
 COPY app/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# App-Code
 COPY app/ /app/
 
-# Make run script executable
+# Startscript
 COPY run.sh /run.sh
-RUN chmod +x /run.sh
+RUN chmod a+x /run.sh
 
 EXPOSE 8099
 

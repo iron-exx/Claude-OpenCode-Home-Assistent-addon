@@ -138,25 +138,46 @@ Register-ScheduledTask -TaskName "OpenCode HA Server" -Action $Action -Trigger $
 ```
 
 #### Linux (systemd):
+
+Der Pfad von OpenCode variiert je nach Installation. Zuerst den richtigen Pfad ermitteln:
 ```bash
-sudo nano /etc/systemd/system/opencode-ha.service
+which opencode
+# Typische Ausgabe: /home/BENUTZER/.opencode/bin/opencode
 ```
-Inhalt:
-```ini
+
+Dann den Dienst anlegen (Pfad und Benutzername anpassen):
+```bash
+OPENCODE_PATH=$(which opencode)
+
+sudo bash -c "cat > /etc/systemd/system/opencode-ha.service << EOF
 [Unit]
 Description=OpenCode Big Pickle – Home Assistant Server
 After=network.target
 
 [Service]
-ExecStart=opencode serve --hostname 0.0.0.0 --port 4096
+ExecStart=$OPENCODE_PATH serve --hostname 0.0.0.0 --port 4096
 Restart=always
-User=DEIN_USERNAME
+User=$USER
 
 [Install]
 WantedBy=multi-user.target
-```
-```bash
+EOF"
+
+sudo systemctl daemon-reload
 sudo systemctl enable --now opencode-ha
+sudo systemctl status opencode-ha
+```
+
+✅ Bei Erfolg: `Active: active (running)`
+
+**Wichtig:** Nicht `/usr/local/bin/opencode` als Pfad verwenden – OpenCode wird meist unter `~/.opencode/bin/opencode` installiert. Immer `which opencode` zur Überprüfung nutzen.
+
+Nützliche Befehle:
+```bash
+sudo systemctl status opencode-ha    # Status prüfen
+sudo journalctl -u opencode-ha -f    # Logs live ansehen
+sudo systemctl restart opencode-ha   # Neustarten
+sudo systemctl stop opencode-ha      # Stoppen
 ```
 
 ---
